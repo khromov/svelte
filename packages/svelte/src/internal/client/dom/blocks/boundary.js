@@ -159,9 +159,10 @@ export class Boundary {
 				const comment = /** @type {Comment} */ (this.#hydrate_open);
 				hydrate_next();
 
-				// only async SSR can emit a pending boundary marker — sync SSR
-				// throws `await_invalid` before it could render a pending snippet
-				const server_rendered_pending = async_mode_flag && comment.data === HYDRATION_START_ELSE;
+				// the server renders the pending snippet (and emits the `[!` marker) whenever
+				// one is provided, regardless of `experimental.async` — this must not be
+				// flag-gated or sync clients would get stuck on the pending content
+				const server_rendered_pending = comment.data === HYDRATION_START_ELSE;
 				const server_rendered_failed = comment.data.startsWith(HYDRATION_START_FAILED);
 
 				if (server_rendered_failed) {
@@ -260,10 +261,6 @@ export class Boundary {
 	}
 
 	#hydrate_pending_content() {
-		// pending boundary markers only exist in async-SSR output — the in-body
-		// guard lets rollup empty this method out of sync bundles
-		if (!async_mode_flag) return;
-
 		const pending = this.#props.pending;
 		if (!pending) return;
 

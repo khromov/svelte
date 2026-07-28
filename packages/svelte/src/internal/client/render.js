@@ -20,7 +20,7 @@ import {
 	set_hydrate_node,
 	set_hydrating
 } from './dom/hydration.js';
-import { array_from } from '../shared/utils.js';
+import { array_from, noop } from '../shared/utils.js';
 import {
 	all_registered_events,
 	handle_event_propagation,
@@ -234,12 +234,17 @@ function _mount(
 				// (read in `Batch#schedule`), `transform_error` (inherited by descendant
 				// `<svelte:boundary>` instances via their constructor) and `get_effect_pending`
 				// (read by `$effect.pending()`); errors bypass it because it does not set
-				// `BOUNDARY_EFFECT`, matching the pass-through root boundary it replaces
+				// `BOUNDARY_EFFECT`, matching the pass-through root boundary it replaces.
+				// `is_rendered`/`update_pending_count` cover async-compiled code that
+				// enables the flag after this root was mounted — pending work is then
+				// tracked by the batch but never suspends the (boundary-less) root
 				/** @type {Effect} */ (active_effect).b = /** @type {Boundary} */ (
 					/** @type {unknown} */ ({
 						is_pending: false,
 						transform_error: transformError,
-						get_effect_pending: () => 0
+						get_effect_pending: () => 0,
+						is_rendered: () => true,
+						update_pending_count: noop
 					})
 				);
 			}
