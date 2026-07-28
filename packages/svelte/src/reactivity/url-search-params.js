@@ -6,6 +6,10 @@ import { get_current_url } from './url.js';
 
 export const REPLACE = Symbol('replace');
 
+var read_methods = ['get', 'getAll', 'has', 'keys', 'forEach', 'toString', 'values', 'entries'];
+
+var inited = false;
+
 /**
  * A reactive version of the built-in [`URLSearchParams`](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams) object.
  * Reading its contents (by iterating, or by calling `params.get(...)` or `params.getAll(...)` as in the [example](https://svelte.dev/playground/b3926c86c5384bab9f2cf993bc08c1c8) below) in an [effect](https://svelte.dev/docs/svelte/$effect) or [derived](https://svelte.dev/docs/svelte/$derived)
@@ -37,6 +41,32 @@ export class SvelteURLSearchParams extends URLSearchParams {
 	#url = get_current_url();
 
 	#updating = false;
+
+	/**
+	 * @param {string[][] | Record<string, string> | string | URLSearchParams} [init]
+	 */
+	constructor(init) {
+		super(init);
+
+		if (!inited) this.#init();
+	}
+
+	// We init as part of the first instance so that we can treeshake this class
+	#init() {
+		inited = true;
+
+		var proto = SvelteURLSearchParams.prototype;
+		var search_params_proto = URLSearchParams.prototype;
+
+		for (const method of read_methods) {
+			// @ts-ignore
+			proto[method] = function (...args) {
+				get(this.#version);
+				// @ts-ignore
+				return search_params_proto[method].apply(this, args);
+			};
+		}
+	}
 
 	#update_url() {
 		if (!this.#url || this.#updating) return;
@@ -100,49 +130,6 @@ export class SvelteURLSearchParams extends URLSearchParams {
 
 	/**
 	 * @param {string} name
-	 * @returns {string|null}
-	 */
-	get(name) {
-		get(this.#version);
-		return super.get(name);
-	}
-
-	/**
-	 * @param {string} name
-	 * @returns {string[]}
-	 */
-	getAll(name) {
-		get(this.#version);
-		return super.getAll(name);
-	}
-
-	/**
-	 * @param {string} name
-	 * @param {string=} value
-	 * @returns {boolean}
-	 */
-	has(name, value) {
-		get(this.#version);
-		return super.has(name, value);
-	}
-
-	keys() {
-		get(this.#version);
-		return super.keys();
-	}
-
-	/**
-	 * @param {(value: string, key: string, parent: URLSearchParams) => void} callback
-	 * @param {any} [this_arg]
-	 * @returns {void}
-	 */
-	forEach(callback, this_arg) {
-		get(this.#version);
-		super.forEach(callback, this_arg);
-	}
-
-	/**
-	 * @param {string} name
 	 * @param {string} value
 	 * @returns {void}
 	 */
@@ -162,21 +149,6 @@ export class SvelteURLSearchParams extends URLSearchParams {
 		super.sort();
 		this.#update_url();
 		increment(this.#version);
-	}
-
-	toString() {
-		get(this.#version);
-		return super.toString();
-	}
-
-	values() {
-		get(this.#version);
-		return super.values();
-	}
-
-	entries() {
-		get(this.#version);
-		return super.entries();
 	}
 
 	[Symbol.iterator]() {

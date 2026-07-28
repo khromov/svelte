@@ -1,8 +1,9 @@
 /** @import { Source } from '#client' */
 import { DEV } from 'esm-env';
-import { source, set, state, increment } from '../internal/client/reactivity/sources.js';
+import { set, state, increment } from '../internal/client/reactivity/sources.js';
 import { label, tag } from '../internal/client/dev/tracing.js';
 import { get, update_version } from '../internal/client/runtime.js';
+import { create_source } from './utils.js';
 
 var read_methods = ['forEach', 'isDisjointFrom', 'isSubsetOf', 'isSupersetOf'];
 var set_like_methods = ['difference', 'intersection', 'symmetricDifference', 'union'];
@@ -75,19 +76,6 @@ export class SvelteSet extends Set {
 		if (!inited) this.#init();
 	}
 
-	/**
-	 * If the source is being created inside the same reaction as the SvelteSet instance,
-	 * we use `state` so that it will not be a dependency of the reaction. Otherwise we
-	 * use `source` so it will be.
-	 *
-	 * @template T
-	 * @param {T} value
-	 * @returns {Source<T>}
-	 */
-	#source(value) {
-		return update_version === this.#update_version ? state(value) : source(value);
-	}
-
 	// We init as part of the first instance so that we can treeshake this class
 	#init() {
 		inited = true;
@@ -129,7 +117,7 @@ export class SvelteSet extends Set {
 				return false;
 			}
 
-			s = this.#source(true);
+			s = create_source(this.#update_version, true);
 
 			if (DEV) {
 				tag(s, `SvelteSet has(${label(value)})`);

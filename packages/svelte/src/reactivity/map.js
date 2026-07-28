@@ -1,8 +1,9 @@
 /** @import { Source } from '#client' */
 import { DEV } from 'esm-env';
-import { set, source, state, increment } from '../internal/client/reactivity/sources.js';
+import { set, state, increment } from '../internal/client/reactivity/sources.js';
 import { label, tag } from '../internal/client/dev/tracing.js';
 import { get, update_version } from '../internal/client/runtime.js';
+import { create_source } from './utils.js';
 
 /**
  * A reactive version of the built-in [`Map`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) object.
@@ -79,19 +80,6 @@ export class SvelteMap extends Map {
 		}
 	}
 
-	/**
-	 * If the source is being created inside the same reaction as the SvelteMap instance,
-	 * we use `state` so that it will not be a dependency of the reaction. Otherwise we
-	 * use `source` so it will be.
-	 *
-	 * @template T
-	 * @param {T} value
-	 * @returns {Source<T>}
-	 */
-	#source(value) {
-		return update_version === this.#update_version ? state(value) : source(value);
-	}
-
 	/** @param {K} key */
 	has(key) {
 		var sources = this.#sources;
@@ -99,7 +87,7 @@ export class SvelteMap extends Map {
 
 		if (s === undefined) {
 			if (super.has(key)) {
-				s = this.#source(0);
+				s = create_source(this.#update_version, 0);
 
 				if (DEV) {
 					tag(s, `SvelteMap get(${label(key)})`);
@@ -134,7 +122,7 @@ export class SvelteMap extends Map {
 
 		if (s === undefined) {
 			if (super.has(key)) {
-				s = this.#source(0);
+				s = create_source(this.#update_version, 0);
 
 				if (DEV) {
 					tag(s, `SvelteMap get(${label(key)})`);
@@ -165,7 +153,7 @@ export class SvelteMap extends Map {
 		var version = this.#version;
 
 		if (s === undefined) {
-			s = this.#source(0);
+			s = create_source(this.#update_version, 0);
 
 			if (DEV) {
 				tag(s, `SvelteMap get(${label(key)})`);
@@ -233,7 +221,7 @@ export class SvelteMap extends Map {
 		if (this.#size.v !== sources.size) {
 			for (var key of super.keys()) {
 				if (!sources.has(key)) {
-					var s = this.#source(0);
+					var s = create_source(this.#update_version, 0);
 					if (DEV) {
 						tag(s, `SvelteMap get(${label(key)})`);
 					}
