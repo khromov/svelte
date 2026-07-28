@@ -244,21 +244,26 @@ export class BranchManager {
 			this.#commit(batch);
 		}
 	}
+}
 
-	/**
-	 * Handles a hydration mismatch: discards the server-rendered nodes
-	 * and renders the branch from scratch in client mode
-	 * @param {any} key
-	 * @param {null | ((target: TemplateNode) => void)} fn
-	 */
-	recreate(key, fn) {
-		var anchor = skip_nodes();
+/**
+ * Handles a hydration mismatch: discards the server-rendered nodes
+ * and renders the branch from scratch in client mode.
+ * A free function rather than a `BranchManager` method so that mount-only
+ * bundles can treeshake it — a retained `set_hydrating(true)` call would
+ * stop rollup proving `hydrating` is always false, keeping all hydration
+ * code alive (class methods are never treeshaken)
+ * @param {BranchManager} branches
+ * @param {any} key
+ * @param {null | ((target: TemplateNode) => void)} fn
+ */
+export function recreate(branches, key, fn) {
+	var anchor = skip_nodes();
 
-		set_hydrate_node(anchor);
-		this.anchor = anchor;
+	set_hydrate_node(anchor);
+	branches.anchor = anchor;
 
-		set_hydrating(false);
-		this.ensure(key, fn);
-		set_hydrating(true);
-	}
+	set_hydrating(false);
+	branches.ensure(key, fn);
+	set_hydrating(true);
 }

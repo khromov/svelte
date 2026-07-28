@@ -2,7 +2,7 @@
 import { EFFECT_TRANSPARENT } from '#client/constants';
 import { hydrate_next, hydrating, read_hydration_instruction, hydrate_node } from '../hydration.js';
 import { block } from '../../reactivity/effects.js';
-import { BranchManager } from './branches.js';
+import { BranchManager, recreate } from './branches.js';
 
 /**
  * @param {TemplateNode} node
@@ -33,7 +33,7 @@ export function if_block(node, fn, elseif = false) {
 			if (key !== parseInt(data.substring(1))) {
 				// Hydration mismatch: remove everything inside the anchor and start fresh.
 				// This could happen with `{#if browser}...{/if}`, for example
-				branches.recreate(key, fn);
+				recreate(branches, key, fn);
 				return;
 			}
 		}

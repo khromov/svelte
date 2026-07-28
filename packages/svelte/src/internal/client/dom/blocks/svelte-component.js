@@ -2,7 +2,7 @@
 import { EFFECT_TRANSPARENT } from '#client/constants';
 import { block } from '../../reactivity/effects.js';
 import { hydrate_next, hydrate_node, hydrating, read_hydration_instruction } from '../hydration.js';
-import { BranchManager } from './branches.js';
+import { BranchManager, recreate } from './branches.js';
 import { HYDRATION_START } from '../../../../constants.js';
 
 /**
@@ -35,7 +35,7 @@ export function component(node, get_component, render_fn) {
 
 			if (server_had_component !== client_has_component) {
 				// Hydration mismatch: skip the server-rendered nodes and render fresh
-				branches.recreate(component, component && ((target) => render_fn(target, component)));
+				recreate(branches, component, component && ((target) => render_fn(target, component)));
 				return;
 			}
 		}
