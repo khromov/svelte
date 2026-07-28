@@ -7,10 +7,14 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const out_dir = 'dist/bundlesize';
-const with_ceiling = process.argv.includes('--ceiling');
+// the ceiling costs ~0.4s on top of the app build, so it is on by default
+const with_ceiling = !process.argv.includes('--no-ceiling');
 
 // `src` is gitignored scratch space, so seed the entry point the same way `prepare` does
 const entry = path.join(root, 'src/App.svelte');
+// spell the path out from the repo root — there are a dozen App.svelte files in this
+// monorepo and "src/App.svelte" does not say which one the numbers came from
+const entry_label = path.relative(path.join(root, '../..'), entry);
 if (!fs.existsSync(entry)) {
 	fs.mkdirSync(path.dirname(entry), { recursive: true });
 	fs.copyFileSync(path.join(root, 'scripts/main.template.svelte'), entry);
@@ -94,12 +98,14 @@ if (runtime) {
 }
 
 console.log(
-	`\n  the runtime is treeshaken — this reflects the features used in src/App.svelte,\n  not a fixed baseline. compare runs, don't read a single number.`
+	`\n  the runtime is treeshaken — this reflects the features used in\n  ${entry_label}, not a fixed baseline.\n  compare runs, don't read a single number.`
 );
 
 if (with_ceiling) {
 	const { build_ceiling } = await import('./ceiling.js');
-	const { file, count } = await build_ceiling(root);
+	const { file, count, skipped, include_dev } = await build_ceiling(root, {
+		include_dev: process.argv.includes('--include-dev')
+	});
 	const contents = fs.readFileSync(file);
 	const ceiling = {
 		raw: contents.length,
@@ -107,7 +113,11 @@ if (with_ceiling) {
 		brotli: zlib.brotliCompressSync(contents).length
 	};
 
-	console.log(`\n  ceiling — all ${count} exports of every client entry point, forced live\n`);
+	const surface = include_dev
+		? `all ${count} exports, dev surface included`
+		: `${count} production exports (${skipped} dev-only excluded)`;
+
+	console.log(`\n  ceiling — ${surface}, forced live\n`);
 	console.log(`    raw    ${kb(ceiling.raw)}`);
 	console.log(`    gzip   ${kb(ceiling.gzip)}`);
 	console.log(`    brotli ${kb(ceiling.brotli)}`);
@@ -119,7 +129,10 @@ if (with_ceiling) {
 		);
 	}
 	console.log(
-		`\n  the ceiling is an upper bound on svelte's own client code only — it says\n  nothing about your app code or third-party deps. it also keeps dev-only\n  exports that a production app never emits, so it is loose, not tight.`
+		`\n  bounds svelte's own client code only — says nothing about your app code\n  or third-party deps.` +
+			(include_dev
+				? ''
+				: ` pass --include-dev to count \`trace\`, \`inspect\`, \`hmr\`\n  and friends, which no production compile emits.`)
 	);
 }
 
