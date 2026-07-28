@@ -59,12 +59,17 @@ export class SvelteURLSearchParams extends URLSearchParams {
 		var search_params_proto = URLSearchParams.prototype;
 
 		for (const method of read_methods) {
-			// @ts-ignore
-			proto[method] = function (...args) {
-				get(this.#version);
-				// @ts-ignore
-				return search_params_proto[method].apply(this, args);
-			};
+			// defined via `Object.defineProperty` so the methods stay non-enumerable,
+			// like the class methods they replace
+			Object.defineProperty(proto, method, {
+				value: function (/** @type {any[]} */ ...args) {
+					get(this.#version);
+					// @ts-ignore
+					return search_params_proto[method].apply(this, args);
+				},
+				writable: true,
+				configurable: true
+			});
 		}
 	}
 
