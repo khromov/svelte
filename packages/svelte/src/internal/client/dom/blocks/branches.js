@@ -253,7 +253,7 @@ export class BranchManager {
  * bundles can treeshake it — a retained `set_hydrating(true)` call would
  * stop rollup proving `hydrating` is always false, keeping all hydration
  * code alive (class methods are never treeshaken)
- * @param {BranchManager} branches
+ * @param {BranchManager<any>} branches
  * @param {any} key
  * @param {null | ((target: TemplateNode) => void)} fn
  */
