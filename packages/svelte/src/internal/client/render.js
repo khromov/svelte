@@ -1,5 +1,6 @@
 /** @import { ComponentContext, Effect, EffectNodes, TemplateNode } from '#client' */
 /** @import { Component, ComponentType, SvelteComponent, MountOptions } from '../../index.js' */
+/** @import { Boundary } from './dom/blocks/boundary.js' */
 import { DEV } from 'esm-env';
 import {
 	clear_text_content,
@@ -11,8 +12,14 @@ import {
 import { HYDRATION_END, HYDRATION_ERROR, HYDRATION_START } from '../../constants.js';
 import { active_effect } from './runtime.js';
 import { push, pop, component_context } from './context.js';
-import { component_root } from './reactivity/effects.js';
-import { hydrate_node, hydrating, set_hydrate_node, set_hydrating } from './dom/hydration.js';
+import { branch, component_root } from './reactivity/effects.js';
+import {
+	hydrate_next,
+	hydrate_node,
+	hydrating,
+	set_hydrate_node,
+	set_hydrating
+} from './dom/hydration.js';
 import { array_from } from '../shared/utils.js';
 import {
 	all_registered_events,
@@ -25,6 +32,7 @@ import { assign_nodes } from './dom/template.js';
 import { is_passive_event } from '../../utils.js';
 import { COMMENT_NODE, STATE_SYMBOL, TEXT_CACHE } from './constants.js';
 import { boundary } from './dom/blocks/boundary.js';
+import { async_mode_flag } from '../flags/index.js';
 
 /**
  * This is normally true — block effects should run their intro transitions —
@@ -172,47 +180,77 @@ function _mount(
 	var unmount = component_root(() => {
 		var anchor_node = anchor ?? target.appendChild(create_text());
 
-		boundary(
-			/** @type {TemplateNode} */ (anchor_node),
-			{
-				pending: () => {}
-			},
-			(anchor_node) => {
-				push({});
-				var ctx = /** @type {ComponentContext} */ (component_context);
-				if (context) ctx.c = context;
+		/** @param {Node} anchor_node */
+		var init = (anchor_node) => {
+			push({});
+			var ctx = /** @type {ComponentContext} */ (component_context);
+			if (context) ctx.c = context;
 
-				if (events) {
-					// We can't spread the object or else we'd lose the state proxy stuff, if it is one
-					/** @type {any} */ (props).$$events = events;
+			if (events) {
+				// We can't spread the object or else we'd lose the state proxy stuff, if it is one
+				/** @type {any} */ (props).$$events = events;
+			}
+
+			if (hydrating) {
+				assign_nodes(/** @type {TemplateNode} */ (anchor_node), null);
+			}
+
+			should_intro = intro;
+			// @ts-expect-error the public typings are not what the actual function looks like
+			component = Component(anchor_node, props) || {};
+			should_intro = true;
+
+			if (hydrating) {
+				/** @type {Effect & { nodes: EffectNodes }} */ (active_effect).nodes.end = hydrate_node;
+
+				if (
+					hydrate_node === null ||
+					hydrate_node.nodeType !== COMMENT_NODE ||
+					/** @type {Comment} */ (hydrate_node).data !== HYDRATION_END
+				) {
+					w.hydration_mismatch();
+					throw HYDRATION_ERROR;
 				}
+			}
 
-				if (hydrating) {
-					assign_nodes(/** @type {TemplateNode} */ (anchor_node), null);
-				}
+			pop();
+		};
 
-				should_intro = intro;
-				// @ts-expect-error the public typings are not what the actual function looks like
-				component = Component(anchor_node, props) || {};
-				should_intro = true;
+		if (async_mode_flag) {
+			// in async mode the root must be a real boundary — top-level `await`
+			// needs a pending context to suspend into
+			boundary(
+				/** @type {TemplateNode} */ (anchor_node),
+				{ pending: () => {} },
+				init,
+				transformError
+			);
+		} else {
+			// in sync mode we skip the root boundary entirely, allowing the `Boundary`
+			// class to be treeshaken out of apps that don't use `<svelte:boundary>`
+			if (transformError !== undefined) {
+				// minimal stand-in for the root boundary. In sync mode the only parts of
+				// the boundary protocol reachable from a boundary-less root are `is_pending`
+				// (read in `Batch#schedule`), `transform_error` (inherited by descendant
+				// `<svelte:boundary>` instances via their constructor) and `get_effect_pending`
+				// (read by `$effect.pending()`); errors bypass it because it does not set
+				// `BOUNDARY_EFFECT`, matching the pass-through root boundary it replaces
+				/** @type {Effect} */ (active_effect).b = /** @type {Boundary} */ (
+					/** @type {unknown} */ ({
+						is_pending: false,
+						transform_error: transformError,
+						get_effect_pending: () => 0
+					})
+				);
+			}
 
-				if (hydrating) {
-					/** @type {Effect & { nodes: EffectNodes }} */ (active_effect).nodes.end = hydrate_node;
+			// the root boundary would advance past the opening `<!--[-->` comment —
+			// without one we do it ourselves (root SSR output always starts with a
+			// plain `[` marker; only async SSR can emit `[!`, which needs a boundary)
+			if (hydrating) hydrate_next();
 
-					if (
-						hydrate_node === null ||
-						hydrate_node.nodeType !== COMMENT_NODE ||
-						/** @type {Comment} */ (hydrate_node).data !== HYDRATION_END
-					) {
-						w.hydration_mismatch();
-						throw HYDRATION_ERROR;
-					}
-				}
-
-				pop();
-			},
-			transformError
-		);
+			branch(() => init(anchor_node));
+		}
 
 		// Setup event delegation _after_ component is mounted - if an error would happen during mount, it would otherwise not be cleaned up
 		/** @type {Set<string>} */
