@@ -40,7 +40,6 @@ import { UNINITIALIZED } from '../../../constants.js';
 import { set_signal_status } from './status.js';
 import { legacy_is_updating_store } from './store.js';
 import { invariant } from '../../shared/dev.js';
-import { log_effect_tree } from '../dev/debug.js';
 import { OBSOLETE } from './deriveds.js';
 
 /** @type {Batch | null} */
@@ -91,8 +90,8 @@ export let legacy_updates = null;
 
 var flush_count = 0;
 
-/** @type {Set<Value>} */
-var source_stacks = new Set();
+/** @type {Set<Value> | null} */
+var source_stacks = DEV ? new Set() : null;
 
 let uid = 1;
 
@@ -215,6 +214,10 @@ export class Batch {
 	}
 
 	#is_deferred() {
+		// without the flag, `is_fork` is never true (`fork()` throws) and `#blocking_pending`
+		// is never populated (`increment` is only reachable from async-compiled output)
+		if (!async_mode_flag) return false;
+
 		if (this.is_fork) return true;
 
 		for (const effect of this.#blocking_pending.keys()) {
@@ -285,7 +288,7 @@ export class Batch {
 			// track all the values that were updated during this flush,
 			// so that they can be reset afterwards
 			for (const value of this.current.keys()) {
-				source_stacks.add(value);
+				/** @type {Set<Value>} */ (source_stacks).add(value);
 			}
 		}
 
@@ -609,7 +612,7 @@ export class Batch {
 	flush() {
 		try {
 			if (DEV) {
-				source_stacks.clear();
+				/** @type {Set<Value>} */ (source_stacks).clear();
 			}
 
 			is_processing = true;
@@ -629,7 +632,7 @@ export class Batch {
 			old_values.clear();
 
 			if (DEV) {
-				for (const source of source_stacks) {
+				for (const source of /** @type {Set<Value>} */ (source_stacks)) {
 					source.updated = null;
 				}
 			}
@@ -656,6 +659,11 @@ export class Batch {
 	}
 
 	#commit() {
+		// The only call site (in `#process`) is already behind `if (async_mode_flag)`, but
+		// rollup cannot treeshake class methods — this in-body guard lets it empty the
+		// method in sync bundles and drop `mark_effects`/`depends_on` with it
+		if (!async_mode_flag) return;
+
 		// If there are other pending batches, they now need to be 'rebased' —
 		// in other words, we re-run block/async effects with the newly
 		// committed state, unless the batch in question has a more

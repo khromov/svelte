@@ -10,6 +10,7 @@ import {
 import { HMR_ANCHOR } from '../../constants.js';
 import { hydrate_node, hydrating } from '../hydration.js';
 import { create_text, should_defer_append } from '../operations.js';
+import { async_mode_flag } from '../../../flags/index.js';
 import { DEV } from 'esm-env';
 
 /**
@@ -185,7 +186,9 @@ export class BranchManager {
 	 */
 	ensure(key, fn) {
 		var batch = /** @type {Batch} */ (current_batch);
-		var defer = should_defer_append();
+		// `should_defer_append` always returns false without the flag — the redundant
+		// check here lets rollup fold the offscreen-fragment path in sync bundles
+		var defer = async_mode_flag && should_defer_append();
 
 		if (fn && !this.#onscreen.has(key) && !this.#offscreen.has(key)) {
 			if (defer) {

@@ -41,6 +41,7 @@ import { get } from '../../runtime.js';
 import { DEV } from 'esm-env';
 import { derived_safe_equal } from '../../reactivity/deriveds.js';
 import { current_batch } from '../../reactivity/batch.js';
+import { async_mode_flag } from '../../../flags/index.js';
 import * as e from '../../errors.js';
 import { tag } from '../../dev/tracing.js';
 
@@ -281,7 +282,7 @@ export function each(node, flags, get_collection, get_key, render_fn, fallback_f
 
 		var keys = new Set();
 		var batch = /** @type {Batch} */ (current_batch);
-		var defer = should_defer_append();
+		var defer = async_mode_flag && should_defer_append();
 
 		for (var index = 0; index < length; index += 1) {
 			if (

@@ -8,8 +8,8 @@ import {
 	set_component_context,
 	set_dev_stack
 } from '../context.js';
-import { Boundary } from '../dom/blocks/boundary.js';
 import { invoke_error_boundary } from '../error-handling.js';
+import { async_mode_flag } from '../../flags/index.js';
 import {
 	active_effect,
 	active_reaction,
@@ -53,7 +53,10 @@ export function flatten(blockers, sync, async, fn) {
 		});
 	}
 
-	if (async.length === 0 && pending.length === 0) {
+	// Without the flag, `await` in components is a compile error and blockers only come
+	// from async-compiled output, so both arrays are always empty — the explicit flag
+	// check lets rollup fold everything after this return in sync bundles
+	if (!async_mode_flag || (async.length === 0 && pending.length === 0)) {
 		fn(deriveds);
 		return;
 	}
