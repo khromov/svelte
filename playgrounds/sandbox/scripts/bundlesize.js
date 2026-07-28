@@ -128,12 +128,6 @@ if (with_ceiling) {
 			`\n  this app ships ${pct}% of the maximum (${kb(runtime.gzip)} of ${kb(ceiling.gzip)} gzip)`
 		);
 	}
-	console.log(
-		`\n  bounds svelte's own client code only — says nothing about your app code\n  or third-party deps.` +
-			(include_dev
-				? ''
-				: ` pass --include-dev to count \`trace\`, \`inspect\`, \`hmr\`\n  and friends, which no production compile emits.`)
-	);
 }
 
 console.log();
