@@ -148,6 +148,10 @@ function check_bundle(case_name, ...strings) {
 check_bundle('Hydration code', 'hydrate_node', 'hydrate_next');
 check_bundle('Legacy code', 'component_context.l');
 check_bundle('$inspect.trace', `'CreatedAt'`);
+// the component above is compiled without `experimental.async`, so the flags/async
+// module is absent and everything behind `async_mode_flag` must fold away
+check_bundle('Boundary class', 'class Boundary');
+check_bundle('Async mode code', 'function async_derived', 'function increment_pending');
 
 if (failed) {
 	// eslint-disable-next-line no-console
