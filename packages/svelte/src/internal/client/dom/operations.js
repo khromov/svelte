@@ -14,7 +14,7 @@ import {
 	TEXT_NODE
 } from '#client/constants';
 import { eager_block_effects } from '../reactivity/batch.js';
-import { NAMESPACE_HTML } from '../../../constants.js';
+import { NAMESPACE_HTML, NAMESPACE_XLINK } from '../../../constants.js';
 
 // export these for reference in the compiled code, making global name deduplication unnecessary
 /** @type {Window} */
@@ -276,7 +276,7 @@ export function create_comment(data = '') {
  */
 export function set_attribute(element, key, value = '') {
 	if (key.startsWith('xlink:')) {
-		element.setAttributeNS('http://www.w3.org/1999/xlink', key, value);
+		element.setAttributeNS(NAMESPACE_XLINK, key, value);
 		return;
 	}
 	return element.setAttribute(key, value);

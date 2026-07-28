@@ -13,20 +13,20 @@ import {
 } from '#client/constants';
 import { queue_micro_task } from '../task.js';
 import { is_capture_event, can_delegate_event, normalize_attribute } from '../../../../utils.js';
-import {
-	active_effect,
-	active_reaction,
-	get,
-	set_active_effect,
-	set_active_reaction
-} from '../../runtime.js';
+import { get } from '../../runtime.js';
 import { attach } from './attachments.js';
 import { clsx } from '../../../shared/attributes.js';
 import { set_class } from './class.js';
 import { set_style } from './style.js';
-import { ATTACHMENT_KEY, NAMESPACE_HTML, UNINITIALIZED } from '../../../../constants.js';
+import {
+	ATTACHMENT_KEY,
+	NAMESPACE_HTML,
+	NAMESPACE_XLINK,
+	UNINITIALIZED
+} from '../../../../constants.js';
 import { branch, destroy_effect, effect, managed } from '../../reactivity/effects.js';
 import { init_select, select_option } from './bindings/select.js';
+import { without_reactive_context } from './bindings/shared.js';
 import { flatten } from '../../reactivity/async.js';
 
 export const CLASS = Symbol('class');
@@ -215,7 +215,7 @@ export function set_attribute(element, attribute, value, skip_warning) {
  * @param {string} value
  */
 export function set_xlink_attribute(dom, attribute, value) {
-	dom.setAttributeNS('http://www.w3.org/1999/xlink', attribute, value);
+	dom.setAttributeNS(NAMESPACE_XLINK, attribute, value);
 }
 
 /**
@@ -224,48 +224,43 @@ export function set_xlink_attribute(dom, attribute, value) {
  * @param {any} value
  */
 export function set_custom_element_data(node, prop, value) {
-	// We need to ensure that setting custom element props, which can
-	// invoke lifecycle methods on other custom elements, does not also
-	// associate those lifecycle methods with the current active reaction
-	// or effect
-	var previous_reaction = active_reaction;
-	var previous_effect = active_effect;
-
 	// If we're hydrating but the custom element is from Svelte, and it already scaffolded,
 	// then it might run block logic in hydration mode, which we have to prevent.
-	let was_hydrating = hydrating;
-	if (hydrating) {
+	var was_hydrating = hydrating;
+	if (was_hydrating) {
 		set_hydrating(false);
 	}
 
-	set_active_reaction(null);
-	set_active_effect(null);
-
 	try {
-		if (
-			// `style` should use `set_attribute` rather than the setter
-			prop !== 'style' &&
-			// Don't compute setters for custom elements while they aren't registered yet,
-			// because during their upgrade/instantiation they might add more setters.
-			// Instead, fall back to a simple "an object, then set as property" heuristic.
-			(setters_cache.has(node.getAttribute('is') || node.nodeName) ||
-			// customElements may not be available in browser extension contexts
-			!customElements ||
-			customElements.get(node.getAttribute('is') || node.nodeName.toLowerCase())
-				? get_setters(node).includes(prop)
-				: value && typeof value === 'object')
-		) {
-			// @ts-expect-error
-			node[prop] = value;
-		} else {
-			// We did getters etc checks already, stringify before passing to set_attribute
-			// to ensure it doesn't invoke the same logic again, and potentially populating
-			// the setters cache too early.
-			set_attribute(node, prop, value == null ? value : String(value));
-		}
+		// Setting custom element props can invoke lifecycle methods on other
+		// custom elements — those must not be associated with the current
+		// active reaction or effect
+		without_reactive_context(() => {
+			var is = node.getAttribute('is');
+
+			if (
+				// `style` should use `set_attribute` rather than the setter
+				prop !== 'style' &&
+				// Don't compute setters for custom elements while they aren't registered yet,
+				// because during their upgrade/instantiation they might add more setters.
+				// Instead, fall back to a simple "an object, then set as property" heuristic.
+				(setters_cache.has(is || node.nodeName) ||
+				// customElements may not be available in browser extension contexts
+				!customElements ||
+				customElements.get(is || node.nodeName.toLowerCase())
+					? get_setters(node).includes(prop)
+					: value && typeof value === 'object')
+			) {
+				// @ts-expect-error
+				node[prop] = value;
+			} else {
+				// We did getters etc checks already, stringify before passing to set_attribute
+				// to ensure it doesn't invoke the same logic again, and potentially populating
+				// the setters cache too early.
+				set_attribute(node, prop, value == null ? value : String(value));
+			}
+		});
 	} finally {
-		set_active_reaction(previous_reaction);
-		set_active_effect(previous_effect);
 		if (was_hydrating) {
 			set_hydrating(true);
 		}
@@ -302,7 +297,8 @@ function set_attributes(
 	var attributes = get_attributes(element);
 
 	var is_custom_element = attributes[IS_CUSTOM_ELEMENT];
-	var preserve_attribute_case = !attributes[IS_HTML];
+	var is_html = /** @type {boolean} */ (attributes[IS_HTML]);
+	var preserve_attribute_case = !is_html;
 
 	// If we're hydrating but the custom element is from Svelte, and it already scaffolded,
 	// then it might run block logic in hydration mode, which we have to prevent.
@@ -366,7 +362,6 @@ function set_attributes(
 		}
 
 		if (key === 'class') {
-			var is_html = element.namespaceURI === 'http://www.w3.org/1999/xhtml';
 			set_class(element, is_html, value, css_hash, prev?.[CLASS], next[CLASS]);
 			current[key] = value;
 			current[CLASS] = next[CLASS];
@@ -429,9 +424,6 @@ function set_attributes(
 
 				current[event_handle_key] = create_event(event_name, element, handle, opts);
 			}
-		} else if (key === 'style') {
-			// avoid using the setter
-			set_attribute(element, key, value);
 		} else if (key === 'autofocus') {
 			autofocus(/** @type {HTMLElement} */ (element), Boolean(value));
 		} else if (!is_custom_element && (key === '__value' || (key === 'value' && value != null))) {

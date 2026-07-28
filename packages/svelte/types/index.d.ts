@@ -1978,35 +1978,35 @@ declare module 'svelte/legacy' {
 	 * */
 	export function self(fn: (event: Event, ...args: Array<unknown>) => void): (event: Event, ...args: unknown[]) => void;
 	/**
-	 * Substitute for the `stopPropagation` event modifier
-	 * @deprecated
-	 * */
-	export function stopPropagation(fn: (event: Event, ...args: Array<unknown>) => void): (event: Event, ...args: unknown[]) => void;
-	/**
 	 * Substitute for the `once` event modifier
 	 * @deprecated
 	 * */
 	export function once(fn: (event: Event, ...args: Array<unknown>) => void): (event: Event, ...args: unknown[]) => void;
 	/**
+	 * Substitute for the `stopPropagation` event modifier
+	 * @deprecated
+	 */
+	export const stopPropagation: (fn: (event: Event, ...args: Array<unknown>) => void) => (event: Event, ...args: unknown[]) => void;
+	/**
 	 * Substitute for the `stopImmediatePropagation` event modifier
 	 * @deprecated
-	 * */
-	export function stopImmediatePropagation(fn: (event: Event, ...args: Array<unknown>) => void): (event: Event, ...args: unknown[]) => void;
+	 */
+	export const stopImmediatePropagation: (fn: (event: Event, ...args: Array<unknown>) => void) => (event: Event, ...args: unknown[]) => void;
 	/**
 	 * Substitute for the `preventDefault` event modifier
 	 * @deprecated
-	 * */
-	export function preventDefault(fn: (event: Event, ...args: Array<unknown>) => void): (event: Event, ...args: unknown[]) => void;
+	 */
+	export const preventDefault: (fn: (event: Event, ...args: Array<unknown>) => void) => (event: Event, ...args: unknown[]) => void;
 	/**
 	 * Substitute for the `passive` event modifier, implemented as an action
 	 * @deprecated
-	 * */
-	export function passive(node: HTMLElement, [event, handler]: [event: string, handler: () => EventListener]): void;
+	 */
+	export const passive: (node: HTMLElement, options: [event: string, handler: () => EventListener]) => void;
 	/**
 	 * Substitute for the `nonpassive` event modifier, implemented as an action
 	 * @deprecated
-	 * */
-	export function nonpassive(node: HTMLElement, [event, handler]: [event: string, handler: () => EventListener]): void;
+	 */
+	export const nonpassive: (node: HTMLElement, options: [event: string, handler: () => EventListener]) => void;
 
 	export {};
 }

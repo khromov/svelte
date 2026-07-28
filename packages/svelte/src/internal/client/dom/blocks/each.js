@@ -1,4 +1,4 @@
-/** @import { EachItem, EachOutroGroup, EachState, Effect, EffectNodes, MaybeSource, Source, TemplateNode, TransitionManager, Value } from '#client' */
+/** @import { EachItem, EachOutroGroup, EachState, Effect, EffectNodes, MaybeSource, Source, TemplateNode, Value } from '#client' */
 /** @import { Batch } from '../../reactivity/batch.js'; */
 import {
 	EACH_INDEX_REACTIVE,
@@ -65,8 +65,6 @@ export function index(_, i) {
  * @param {null | Node} controlled_anchor
  */
 function pause_effects(state, to_destroy, controlled_anchor) {
-	/** @type {TransitionManager[]} */
-	var transitions = [];
 	var length = to_destroy.length;
 
 	/** @type {EachOutroGroup} */
@@ -105,7 +103,7 @@ function pause_effects(state, to_destroy, controlled_anchor) {
 		// If we're in a controlled each block (i.e. the block is the only child of an
 		// element), and we are removing all items, _and_ there are no out transitions,
 		// we can use the fast path — emptying the element and replacing the anchor
-		var fast_path = transitions.length === 0 && controlled_anchor !== null;
+		var fast_path = controlled_anchor !== null;
 
 		if (fast_path) {
 			var anchor = /** @type {Element} */ (controlled_anchor);

@@ -82,48 +82,40 @@ export function bind_buffered(media, set) {
 }
 
 /**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {(array: Array<{ start: number; end: number }>) => void} set
+ * Creates a readonly binding that reports `get_value(media)` on the given events
+ * @template T
+ * @param {string[]} events
+ * @param {(media: HTMLVideoElement | HTMLAudioElement) => T} get_value
+ * @returns {(media: HTMLVideoElement | HTMLAudioElement, set: (value: T) => void) => void}
  */
-export function bind_seekable(media, set) {
-	listen(media, ['loadedmetadata'], () => set(time_ranges_to_array(media.seekable)));
+function readonly_media_binding(events, get_value) {
+	return (media, set) => {
+		listen(media, events, () => set(get_value(media)));
+	};
 }
 
-/**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {(array: Array<{ start: number; end: number }>) => void} set
- */
-export function bind_played(media, set) {
-	listen(media, ['timeupdate'], () => set(time_ranges_to_array(media.played)));
-}
+export const bind_seekable = /* @__PURE__ */ readonly_media_binding(['loadedmetadata'], (media) =>
+	time_ranges_to_array(media.seekable)
+);
 
-/**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {(seeking: boolean) => void} set
- */
-export function bind_seeking(media, set) {
-	listen(media, ['seeking', 'seeked'], () => set(media.seeking));
-}
+export const bind_played = /* @__PURE__ */ readonly_media_binding(['timeupdate'], (media) =>
+	time_ranges_to_array(media.played)
+);
 
-/**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {(seeking: boolean) => void} set
- */
-export function bind_ended(media, set) {
-	listen(media, ['timeupdate', 'ended'], () => set(media.ended));
-}
+export const bind_seeking = /* @__PURE__ */ readonly_media_binding(
+	['seeking', 'seeked'],
+	(media) => media.seeking
+);
 
-/**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {(ready_state: number) => void} set
- */
-export function bind_ready_state(media, set) {
-	listen(
-		media,
-		['loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'playing', 'waiting', 'emptied'],
-		() => set(media.readyState)
-	);
-}
+export const bind_ended = /* @__PURE__ */ readonly_media_binding(
+	['timeupdate', 'ended'],
+	(media) => media.ended
+);
+
+export const bind_ready_state = /* @__PURE__ */ readonly_media_binding(
+	['loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'playing', 'waiting', 'emptied'],
+	(media) => media.readyState
+);
 
 /**
  * @param {HTMLVideoElement | HTMLAudioElement} media
@@ -185,49 +177,40 @@ export function bind_paused(media, get, set = get) {
 }
 
 /**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {() => number | undefined} get
- * @param {(volume: number) => void} set
+ * Creates a two-way binding for `volume`/`muted` — reports `media[prop]` on `volumechange`,
+ * and writes the coerced bound value back whenever it differs
+ * @template {'volume' | 'muted'} P
+ * @param {P} prop
+ * @param {(value: unknown) => (HTMLVideoElement | HTMLAudioElement)[P]} coerce
+ * @returns {(
+ *   media: HTMLVideoElement | HTMLAudioElement,
+ *   get: () => (HTMLVideoElement | HTMLAudioElement)[P] | undefined,
+ *   set?: (value: (HTMLVideoElement | HTMLAudioElement)[P]) => void
+ * ) => void}
  */
-export function bind_volume(media, get, set = get) {
-	var callback = () => {
-		set(media.volume);
-	};
+function media_setter_binding(prop, coerce) {
+	return (media, get, set = get) => {
+		var callback = () => {
+			set(media[prop]);
+		};
 
-	if (get() == null) {
-		callback();
-	}
-
-	listen(media, ['volumechange'], callback, false);
-
-	render_effect(() => {
-		var value = Number(get());
-
-		if (value !== media.volume && !isNaN(value)) {
-			media.volume = value;
+		if (get() == null) {
+			callback();
 		}
-	});
-}
 
-/**
- * @param {HTMLVideoElement | HTMLAudioElement} media
- * @param {() => boolean | undefined} get
- * @param {(muted: boolean) => void} set
- */
-export function bind_muted(media, get, set = get) {
-	var callback = () => {
-		set(media.muted);
+		listen(media, ['volumechange'], callback, false);
+
+		render_effect(() => {
+			var value = coerce(get());
+
+			// `isNaN` only ever excludes a non-numeric `volume`; for `muted` it is always false
+			if (value !== media[prop] && !isNaN(/** @type {number} */ (value))) {
+				media[prop] = value;
+			}
+		});
 	};
-
-	if (get() == null) {
-		callback();
-	}
-
-	listen(media, ['volumechange'], callback, false);
-
-	render_effect(() => {
-		var value = !!get();
-
-		if (media.muted !== value) media.muted = value;
-	});
 }
+
+export const bind_volume = /* @__PURE__ */ media_setter_binding('volume', Number);
+
+export const bind_muted = /* @__PURE__ */ media_setter_binding('muted', (value) => !!value);

@@ -41,6 +41,7 @@ export const HMR = Symbol('hmr');
 export const NAMESPACE_HTML = 'http://www.w3.org/1999/xhtml';
 export const NAMESPACE_SVG = 'http://www.w3.org/2000/svg';
 export const NAMESPACE_MATHML = 'http://www.w3.org/1998/Math/MathML';
+export const NAMESPACE_XLINK = 'http://www.w3.org/1999/xlink';
 
 // we use a list of ignorable runtime warnings because not every runtime warning
 // can be ignored and we want to keep the validation for svelte-ignore in place

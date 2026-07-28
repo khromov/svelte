@@ -1,14 +1,6 @@
 /** @import { TemplateNode } from '#client' */
 import { EFFECT_TRANSPARENT } from '#client/constants';
-import {
-	hydrate_next,
-	hydrating,
-	read_hydration_instruction,
-	skip_nodes,
-	set_hydrate_node,
-	set_hydrating,
-	hydrate_node
-} from '../hydration.js';
+import { hydrate_next, hydrating, read_hydration_instruction, hydrate_node } from '../hydration.js';
 import { block } from '../../reactivity/effects.js';
 import { BranchManager } from './branches.js';
 
@@ -41,15 +33,7 @@ export function if_block(node, fn, elseif = false) {
 			if (key !== parseInt(data.substring(1))) {
 				// Hydration mismatch: remove everything inside the anchor and start fresh.
 				// This could happen with `{#if browser}...{/if}`, for example
-				var anchor = skip_nodes();
-
-				set_hydrate_node(anchor);
-				branches.anchor = anchor;
-
-				set_hydrating(false);
-				branches.ensure(key, fn);
-				set_hydrating(true);
-
+				branches.recreate(key, fn);
 				return;
 			}
 		}

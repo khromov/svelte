@@ -45,23 +45,21 @@ export function assign_nodes(start, end) {
 }
 
 /**
- * @param {string} content
+ * Shared tail of the `from_*` template factories: lazily build the template
+ * node, clone it per instantiation and assign the effect's node range
  * @param {number} flags
+ * @param {() => Node} create_node called once, on first non-hydrating instantiation
+ * @param {boolean} [clone_node] always use `cloneNode` — namespaced templates ignore
+ * `TEMPLATE_USE_IMPORT_NODE` and the Firefox `importNode` workaround (see `from_namespace`)
  * @returns {() => Node | Node[]}
  */
 /*#__NO_SIDE_EFFECTS__*/
-export function from_html(content, flags) {
+function create_template(flags, create_node, clone_node = false) {
 	var is_fragment = (flags & TEMPLATE_FRAGMENT) !== 0;
 	var use_import_node = (flags & TEMPLATE_USE_IMPORT_NODE) !== 0;
 
-	/** @type {Node} */
+	/** @type {Node | undefined} */
 	var node;
-
-	/**
-	 * Whether or not the first item is a text/element node. If not, we need to
-	 * create an additional comment node to act as `effect.nodes.start`
-	 */
-	var has_start = !content.startsWith('<!>');
 
 	return () => {
 		if (hydrating) {
@@ -69,13 +67,12 @@ export function from_html(content, flags) {
 			return hydrate_node;
 		}
 
-		if (node === undefined) {
-			node = create_fragment_from_html(has_start ? content : '<!>' + content);
-			if (!is_fragment) node = /** @type {TemplateNode} */ (get_first_child(node));
-		}
+		node ??= create_node();
 
 		var clone = /** @type {TemplateNode} */ (
-			use_import_node || is_firefox ? document.importNode(node, true) : node.cloneNode(true)
+			!clone_node && (use_import_node || is_firefox)
+				? document.importNode(node, true)
+				: node.cloneNode(true)
 		);
 
 		if (is_fragment) {
@@ -94,6 +91,28 @@ export function from_html(content, flags) {
 /**
  * @param {string} content
  * @param {number} flags
+ * @returns {() => Node | Node[]}
+ */
+/*#__NO_SIDE_EFFECTS__*/
+export function from_html(content, flags) {
+	/**
+	 * Whether or not the first item is a text/element node. If not, we need to
+	 * create an additional comment node to act as `effect.nodes.start`
+	 */
+	var has_start = !content.startsWith('<!>');
+
+	return create_template(flags, () => {
+		var node = /** @type {Node} */ (
+			create_fragment_from_html(has_start ? content : '<!>' + content)
+		);
+		if ((flags & TEMPLATE_FRAGMENT) === 0) node = /** @type {Node} */ (get_first_child(node));
+		return node;
+	});
+}
+
+/**
+ * @param {string} content
+ * @param {number} flags
  * @param {'svg' | 'math'} ns
  * @returns {() => Node | Node[]}
  */
@@ -105,45 +124,30 @@ function from_namespace(content, flags, ns = 'svg') {
 	 */
 	var has_start = !content.startsWith('<!>');
 
-	var is_fragment = (flags & TEMPLATE_FRAGMENT) !== 0;
 	var wrapped = `<${ns}>${has_start ? content : '<!>' + content}</${ns}>`;
 
-	/** @type {Element | DocumentFragment} */
-	var node;
-
-	return () => {
-		if (hydrating) {
-			assign_nodes(hydrate_node, null);
-			return hydrate_node;
-		}
-
-		if (!node) {
+	return create_template(
+		flags,
+		() => {
 			var fragment = /** @type {DocumentFragment} */ (create_fragment_from_html(wrapped));
 			var root = /** @type {Element} */ (get_first_child(fragment));
 
-			if (is_fragment) {
-				node = document.createDocumentFragment();
-				while (get_first_child(root)) {
-					node.appendChild(/** @type {TemplateNode} */ (get_first_child(root)));
-				}
-			} else {
-				node = /** @type {Element} */ (get_first_child(root));
+			if ((flags & TEMPLATE_FRAGMENT) === 0) {
+				return /** @type {Element} */ (get_first_child(root));
 			}
-		}
 
-		var clone = /** @type {TemplateNode} */ (node.cloneNode(true));
+			var node = document.createDocumentFragment();
+			while (get_first_child(root)) {
+				node.appendChild(/** @type {TemplateNode} */ (get_first_child(root)));
+			}
 
-		if (is_fragment) {
-			var start = /** @type {TemplateNode} */ (get_first_child(clone));
-			var end = /** @type {TemplateNode} */ (clone.lastChild);
-
-			assign_nodes(start, end);
-		} else {
-			assign_nodes(clone, clone);
-		}
-
-		return clone;
-	};
+			return node;
+		},
+		// The compiler can set TEMPLATE_USE_IMPORT_NODE on namespaced templates (e.g. a
+		// `<video>` inside `<foreignObject>`), but these have always been cloned with
+		// `cloneNode` — preserve that
+		true
+	);
 }
 
 /**
@@ -217,45 +221,18 @@ function fragment_from_tree(structure, ns) {
  */
 /*#__NO_SIDE_EFFECTS__*/
 export function from_tree(structure, flags) {
-	var is_fragment = (flags & TEMPLATE_FRAGMENT) !== 0;
-	var use_import_node = (flags & TEMPLATE_USE_IMPORT_NODE) !== 0;
+	return create_template(flags, () => {
+		const ns =
+			(flags & TEMPLATE_USE_SVG) !== 0
+				? NAMESPACE_SVG
+				: (flags & TEMPLATE_USE_MATHML) !== 0
+					? NAMESPACE_MATHML
+					: undefined;
 
-	/** @type {Node} */
-	var node;
-
-	return () => {
-		if (hydrating) {
-			assign_nodes(hydrate_node, null);
-			return hydrate_node;
-		}
-
-		if (node === undefined) {
-			const ns =
-				(flags & TEMPLATE_USE_SVG) !== 0
-					? NAMESPACE_SVG
-					: (flags & TEMPLATE_USE_MATHML) !== 0
-						? NAMESPACE_MATHML
-						: undefined;
-
-			node = fragment_from_tree(structure, ns);
-			if (!is_fragment) node = /** @type {TemplateNode} */ (get_first_child(node));
-		}
-
-		var clone = /** @type {TemplateNode} */ (
-			use_import_node || is_firefox ? document.importNode(node, true) : node.cloneNode(true)
-		);
-
-		if (is_fragment) {
-			var start = /** @type {TemplateNode} */ (get_first_child(clone));
-			var end = /** @type {TemplateNode} */ (clone.lastChild);
-
-			assign_nodes(start, end);
-		} else {
-			assign_nodes(clone, clone);
-		}
-
-		return clone;
-	};
+		var node = /** @type {Node} */ (fragment_from_tree(structure, ns));
+		if ((flags & TEMPLATE_FRAGMENT) === 0) node = /** @type {Node} */ (get_first_child(node));
+		return node;
+	});
 }
 
 /**

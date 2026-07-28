@@ -8,7 +8,13 @@ import {
 	resume_effect
 } from '../../reactivity/effects.js';
 import { HMR_ANCHOR } from '../../constants.js';
-import { hydrate_node, hydrating } from '../hydration.js';
+import {
+	hydrate_node,
+	hydrating,
+	set_hydrate_node,
+	set_hydrating,
+	skip_nodes
+} from '../hydration.js';
 import { create_text, should_defer_append } from '../operations.js';
 import { async_mode_flag } from '../../../flags/index.js';
 import { DEV } from 'esm-env';
@@ -237,5 +243,22 @@ export class BranchManager {
 
 			this.#commit(batch);
 		}
+	}
+
+	/**
+	 * Handles a hydration mismatch: discards the server-rendered nodes
+	 * and renders the branch from scratch in client mode
+	 * @param {any} key
+	 * @param {null | ((target: TemplateNode) => void)} fn
+	 */
+	recreate(key, fn) {
+		var anchor = skip_nodes();
+
+		set_hydrate_node(anchor);
+		this.anchor = anchor;
+
+		set_hydrating(false);
+		this.ensure(key, fn);
+		set_hydrating(true);
 	}
 }
