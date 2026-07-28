@@ -6,8 +6,9 @@ import { loop } from '../internal/client/loop.js';
 import { linear } from '../easing/index.js';
 import { is_date } from './utils.js';
 import { set, state } from '../internal/client/reactivity/sources.js';
+import { render_effect } from '../internal/client/reactivity/effects.js';
 import { tag } from '../internal/client/dev/tracing.js';
-import { get, render_effect } from 'svelte/internal/client';
+import { get } from '../internal/client/runtime.js';
 import { DEV } from 'esm-env';
 
 /**

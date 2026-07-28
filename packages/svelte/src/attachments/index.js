@@ -1,9 +1,9 @@
 /** @import { Action, ActionReturn } from '../action/public' */
 /** @import { Attachment } from './public' */
-import { noop, render_effect } from 'svelte/internal/client';
+import { noop } from '../internal/shared/utils.js';
 import { ATTACHMENT_KEY } from '../constants.js';
 import { untrack } from '../index-client.js';
-import { teardown } from '../internal/client/reactivity/effects.js';
+import { render_effect, teardown } from '../internal/client/reactivity/effects.js';
 
 /**
  * Creates an object key that will be recognised as an attachment when the object is spread onto an element,

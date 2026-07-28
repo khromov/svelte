@@ -1,5 +1,5 @@
 /** @import { Source } from '#client' */
-import { derived } from '../internal/client/index.js';
+import { user_derived as derived } from '../internal/client/reactivity/deriveds.js';
 import { set, state } from '../internal/client/reactivity/sources.js';
 import { tag } from '../internal/client/dev/tracing.js';
 import { active_reaction, get, set_active_reaction } from '../internal/client/runtime.js';

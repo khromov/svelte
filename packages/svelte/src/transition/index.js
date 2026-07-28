@@ -2,23 +2,7 @@
 
 import { DEV } from 'esm-env';
 import * as w from '../internal/client/warnings.js';
-
-/** @param {number} x */
-const linear = (x) => x;
-
-/** @param {number} t */
-function cubic_out(t) {
-	const f = t - 1.0;
-	return f * f * f + 1.0;
-}
-
-/**
- * @param {number} t
- * @returns {number}
- */
-function cubic_in_out(t) {
-	return t < 0.5 ? 4.0 * t * t * t : 0.5 * Math.pow(2.0 * t - 2.0, 3.0) + 1.0;
-}
+import { cubicInOut, cubicOut, linear } from '../easing/index.js';
 
 /** @param {number | string} value
  * @returns {[number, string]}
@@ -37,7 +21,7 @@ function split_css_unit(value) {
  */
 export function blur(
 	node,
-	{ delay = 0, duration = 400, easing = cubic_in_out, amount = 5, opacity = 0 } = {}
+	{ delay = 0, duration = 400, easing = cubicInOut, amount = 5, opacity = 0 } = {}
 ) {
 	const style = getComputedStyle(node);
 	const target_opacity = +style.opacity;
@@ -78,7 +62,7 @@ export function fade(node, { delay = 0, duration = 400, easing = linear } = {}) 
  */
 export function fly(
 	node,
-	{ delay = 0, duration = 400, easing = cubic_out, x = 0, y = 0, opacity = 0 } = {}
+	{ delay = 0, duration = 400, easing = cubicOut, x = 0, y = 0, opacity = 0 } = {}
 ) {
 	const style = getComputedStyle(node);
 	const target_opacity = +style.opacity;
@@ -105,7 +89,7 @@ var slide_warning = false;
  * @param {SlideParams} [params]
  * @returns {TransitionConfig}
  */
-export function slide(node, { delay = 0, duration = 400, easing = cubic_out, axis = 'y' } = {}) {
+export function slide(node, { delay = 0, duration = 400, easing = cubicOut, axis = 'y' } = {}) {
 	const style = getComputedStyle(node);
 
 	if (DEV && !slide_warning && /(contents|inline|table)/.test(style.display)) {
@@ -158,7 +142,7 @@ export function slide(node, { delay = 0, duration = 400, easing = cubic_out, axi
  */
 export function scale(
 	node,
-	{ delay = 0, duration = 400, easing = cubic_out, start = 0, opacity = 0 } = {}
+	{ delay = 0, duration = 400, easing = cubicOut, start = 0, opacity = 0 } = {}
 ) {
 	const style = getComputedStyle(node);
 	const target_opacity = +style.opacity;
@@ -183,7 +167,7 @@ export function scale(
  * @param {DrawParams} [params]
  * @returns {TransitionConfig}
  */
-export function draw(node, { delay = 0, speed, duration, easing = cubic_in_out } = {}) {
+export function draw(node, { delay = 0, speed, duration, easing = cubicInOut } = {}) {
 	let len = node.getTotalLength();
 	const style = getComputedStyle(node);
 	if (style.strokeLinecap !== 'butt') {
@@ -246,7 +230,7 @@ export function crossfade({ fallback, ...defaults }) {
 		const {
 			delay = 0,
 			duration = /** @param {number} d */ (d) => Math.sqrt(d) * 30,
-			easing = cubic_out
+			easing = cubicOut
 		} = assign(assign({}, defaults), params);
 		const from = from_node.getBoundingClientRect();
 		const to = node.getBoundingClientRect();

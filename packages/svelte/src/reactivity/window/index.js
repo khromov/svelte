@@ -1,7 +1,7 @@
 import { BROWSER, DEV } from 'esm-env';
 import { on } from '../../events/index.js';
 import { ReactiveValue } from '../reactive-value.js';
-import { get } from '../../internal/client/index.js';
+import { get } from '../../internal/client/runtime.js';
 import { set, source } from '../../internal/client/reactivity/sources.js';
 import { tag } from '../../internal/client/dev/tracing.js';
 
@@ -9,7 +9,7 @@ import { tag } from '../../internal/client/dev/tracing.js';
  * `scrollX.current` is a reactive view of `window.scrollX`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const scrollX = new ReactiveValue(
+export const scrollX = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.scrollX : () => undefined,
 	(update) => on(window, 'scroll', update)
 );
@@ -18,7 +18,7 @@ export const scrollX = new ReactiveValue(
  * `scrollY.current` is a reactive view of `window.scrollY`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const scrollY = new ReactiveValue(
+export const scrollY = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.scrollY : () => undefined,
 	(update) => on(window, 'scroll', update)
 );
@@ -27,7 +27,7 @@ export const scrollY = new ReactiveValue(
  * `innerWidth.current` is a reactive view of `window.innerWidth`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const innerWidth = new ReactiveValue(
+export const innerWidth = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.innerWidth : () => undefined,
 	(update) => on(window, 'resize', update)
 );
@@ -36,7 +36,7 @@ export const innerWidth = new ReactiveValue(
  * `innerHeight.current` is a reactive view of `window.innerHeight`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const innerHeight = new ReactiveValue(
+export const innerHeight = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.innerHeight : () => undefined,
 	(update) => on(window, 'resize', update)
 );
@@ -45,7 +45,7 @@ export const innerHeight = new ReactiveValue(
  * `outerWidth.current` is a reactive view of `window.outerWidth`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const outerWidth = new ReactiveValue(
+export const outerWidth = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.outerWidth : () => undefined,
 	(update) => on(window, 'resize', update)
 );
@@ -54,7 +54,7 @@ export const outerWidth = new ReactiveValue(
  * `outerHeight.current` is a reactive view of `window.outerHeight`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const outerHeight = new ReactiveValue(
+export const outerHeight = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.outerHeight : () => undefined,
 	(update) => on(window, 'resize', update)
 );
@@ -63,7 +63,7 @@ export const outerHeight = new ReactiveValue(
  * `screenLeft.current` is a reactive view of `window.screenLeft`. It is updated inside a `requestAnimationFrame` callback. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const screenLeft = new ReactiveValue(
+export const screenLeft = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.screenLeft : () => undefined,
 	(update) => {
 		let value = window.screenLeft;
@@ -86,7 +86,7 @@ export const screenLeft = new ReactiveValue(
  * `screenTop.current` is a reactive view of `window.screenTop`. It is updated inside a `requestAnimationFrame` callback. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const screenTop = new ReactiveValue(
+export const screenTop = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => window.screenTop : () => undefined,
 	(update) => {
 		let value = window.screenTop;
@@ -109,7 +109,7 @@ export const screenTop = new ReactiveValue(
  * `online.current` is a reactive view of `navigator.onLine`. On the server it is `undefined`.
  * @since 5.11.0
  */
-export const online = new ReactiveValue(
+export const online = /* @__PURE__ */ new ReactiveValue(
 	BROWSER ? () => navigator.onLine : () => undefined,
 	(update) => {
 		const unsub_online = on(window, 'online', update);

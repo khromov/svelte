@@ -47,7 +47,7 @@ export function clsx(value) {
 	}
 }
 
-const whitespace = [...' \t\n\r\f\u00a0\u000b\ufeff'];
+const whitespace = ' \t\n\r\f\u00a0\u000b\ufeff';
 
 /**
  * @param {any} value

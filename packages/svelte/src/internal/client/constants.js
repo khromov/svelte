@@ -71,11 +71,13 @@ export const FORM_RESET_HANDLER = Symbol('form reset');
 /** An anchor might change, via this symbol on the original anchor we can tell HMR about the updated anchor */
 export const HMR_ANCHOR = Symbol('hmr anchor');
 
-/** allow users to ignore aborted signal errors if `reason.name === 'StaleReactionError` */
-export const STALE_REACTION = new (class StaleReactionError extends Error {
+class StaleReactionError extends Error {
 	name = 'StaleReactionError';
 	message = 'The reaction that called `getAbortSignal()` was re-run or destroyed';
-})();
+}
+
+/** allow users to ignore aborted signal errors if `reason.name === 'StaleReactionError` */
+export const STALE_REACTION = /* @__PURE__ */ new StaleReactionError();
 
 export const IS_XHTML =
 	// We gotta write it like this because after downleveling the pure comment may end up in the wrong location
