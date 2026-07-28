@@ -41,6 +41,7 @@ import { tag } from '../../dev/tracing.js';
 import { createSubscriber } from '../../../../reactivity/create-subscriber.js';
 import { create_text } from '../operations.js';
 import { defer_effect } from '../../reactivity/utils.js';
+import { async_mode_flag } from '../../../flags/index.js';
 
 /**
  * @typedef {{
@@ -122,17 +123,12 @@ export class Boundary {
 	 */
 	#effect_pending = null;
 
-	#effect_pending_subscriber = createSubscriber(() => {
-		this.#effect_pending = source(this.#local_pending_count);
-
-		if (DEV) {
-			tag(this.#effect_pending, '$effect.pending()');
-		}
-
-		return () => {
-			this.#effect_pending = null;
-		};
-	});
+	/**
+	 * Created lazily on first `$effect.pending()` read so that boundaries
+	 * which never use it don't pay for a subscriber allocation
+	 * @type {(() => void) | null}
+	 */
+	#effect_pending_subscriber = null;
 
 	/**
 	 * @param {TemplateNode} node
@@ -163,7 +159,9 @@ export class Boundary {
 				const comment = /** @type {Comment} */ (this.#hydrate_open);
 				hydrate_next();
 
-				const server_rendered_pending = comment.data === HYDRATION_START_ELSE;
+				// only async SSR can emit a pending boundary marker — sync SSR
+				// throws `await_invalid` before it could render a pending snippet
+				const server_rendered_pending = async_mode_flag && comment.data === HYDRATION_START_ELSE;
 				const server_rendered_failed = comment.data.startsWith(HYDRATION_START_FAILED);
 
 				if (server_rendered_failed) {
@@ -262,6 +260,10 @@ export class Boundary {
 	}
 
 	#hydrate_pending_content() {
+		// pending boundary markers only exist in async-SSR output — the in-body
+		// guard lets rollup empty this method out of sync bundles
+		if (!async_mode_flag) return;
+
 		const pending = this.#props.pending;
 		if (!pending) return;
 
@@ -343,7 +345,10 @@ export class Boundary {
 	}
 
 	has_pending_snippet() {
-		return !!this.#props.pending;
+		// in sync mode nothing ever increments pending counts, so a `pending`
+		// snippet can never be displayed — treating it as absent lets the
+		// pending machinery fold out of sync bundles
+		return async_mode_flag && !!this.#props.pending;
 	}
 
 	/**
@@ -379,6 +384,9 @@ export class Boundary {
 	 * @param {Batch} batch
 	 */
 	#update_pending_count(d, batch) {
+		// pending counts only change as a result of async work, which requires async mode
+		if (!async_mode_flag) return;
+
 		if (!this.has_pending_snippet()) {
 			if (this.parent) {
 				this.parent.#update_pending_count(d, batch);
@@ -414,6 +422,9 @@ export class Boundary {
 	 * @param {Batch} batch
 	 */
 	update_pending_count(d, batch) {
+		// callers are all in async-compiled output, so this is unreachable in sync mode
+		if (!async_mode_flag) return;
+
 		this.#update_pending_count(d, batch);
 
 		this.#local_pending_count += d;
@@ -430,6 +441,18 @@ export class Boundary {
 	}
 
 	get_effect_pending() {
+		this.#effect_pending_subscriber ??= createSubscriber(() => {
+			this.#effect_pending = source(this.#local_pending_count);
+
+			if (DEV) {
+				tag(this.#effect_pending, '$effect.pending()');
+			}
+
+			return () => {
+				this.#effect_pending = null;
+			};
+		});
+
 		this.#effect_pending_subscriber();
 		return get(/** @type {Source<number>} */ (this.#effect_pending));
 	}
