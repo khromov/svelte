@@ -1,5 +1,6 @@
 /dist/client/*
 /dist/server/*
 /dist/bundlesize/*
+/dist/ceiling/*
 /output
 /src/*

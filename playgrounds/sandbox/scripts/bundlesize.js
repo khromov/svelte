@@ -7,6 +7,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const out_dir = 'dist/bundlesize';
+const with_ceiling = process.argv.includes('--ceiling');
 
 // `src` is gitignored scratch space, so seed the entry point the same way `prepare` does
 const entry = path.join(root, 'src/App.svelte');
@@ -93,5 +94,33 @@ if (runtime) {
 }
 
 console.log(
-	`\n  the runtime is treeshaken — this reflects the features used in src/App.svelte,\n  not a fixed baseline. compare runs, don't read a single number.\n`
+	`\n  the runtime is treeshaken — this reflects the features used in src/App.svelte,\n  not a fixed baseline. compare runs, don't read a single number.`
 );
+
+if (with_ceiling) {
+	const { build_ceiling } = await import('./ceiling.js');
+	const { file, count } = await build_ceiling(root);
+	const contents = fs.readFileSync(file);
+	const ceiling = {
+		raw: contents.length,
+		gzip: zlib.gzipSync(contents, { level: 9 }).length,
+		brotli: zlib.brotliCompressSync(contents).length
+	};
+
+	console.log(`\n  ceiling — all ${count} exports of every client entry point, forced live\n`);
+	console.log(`    raw    ${kb(ceiling.raw)}`);
+	console.log(`    gzip   ${kb(ceiling.gzip)}`);
+	console.log(`    brotli ${kb(ceiling.brotli)}`);
+
+	if (runtime) {
+		const pct = ((runtime.gzip / ceiling.gzip) * 100).toFixed(1);
+		console.log(
+			`\n  this app ships ${pct}% of the maximum (${kb(runtime.gzip)} of ${kb(ceiling.gzip)} gzip)`
+		);
+	}
+	console.log(
+		`\n  the ceiling is an upper bound on svelte's own client code only — it says\n  nothing about your app code or third-party deps. it also keeps dev-only\n  exports that a production app never emits, so it is loose, not tight.`
+	);
+}
+
+console.log();
