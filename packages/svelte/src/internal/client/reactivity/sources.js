@@ -41,7 +41,6 @@ import {
 	teardown_write,
 	source_stacks
 } from './batch.js';
-import { proxy } from '../proxy.js';
 import { execute_derived } from './deriveds.js';
 import { eager_effects_flag, set_signal_status } from './status.js';
 
@@ -163,12 +162,11 @@ export function check_mutation(source) {
  * @template V
  * @param {Value<V>} source
  * @param {V} value
- * @param {boolean} [should_proxy]
  * @returns {V}
  */
-export function set(source, value, should_proxy = false) {
+export function set(source, value) {
 	check_mutation(source);
-	return unchecked_set(source, value, should_proxy);
+	return unchecked_set(source, value);
 }
 
 /**
@@ -179,17 +177,14 @@ export function set(source, value, should_proxy = false) {
  * @template V
  * @param {Value<V>} source
  * @param {V} value
- * @param {boolean} [should_proxy]
  * @returns {V}
  */
-export function unchecked_set(source, value, should_proxy = false) {
-	let new_value = should_proxy ? proxy(value) : value;
-
+export function unchecked_set(source, value) {
 	if (DEV) {
-		tag_proxy(new_value, /** @type {string} */ (source.label));
+		tag_proxy(value, /** @type {string} */ (source.label));
 	}
 
-	return internal_set(source, new_value, legacy_updates);
+	return internal_set(source, value, legacy_updates);
 }
 
 /**

@@ -169,6 +169,7 @@ check_bundle(
 	'#decrement_queued = true',
 	'this.#local_pending_count += d'
 );
+check_bundle('State proxy', 'state_descriptors_fixed');
 
 if (failed) {
 	// eslint-disable-next-line no-console

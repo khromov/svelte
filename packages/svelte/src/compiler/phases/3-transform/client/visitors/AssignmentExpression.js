@@ -93,7 +93,7 @@ function build_assignment(operator, left, right, context) {
 					is_non_coercive_operator(operator) &&
 					should_proxy(value, context.state.scope);
 
-				const assignment = b.call('$.set', left, value, needs_proxy && b.true);
+				const assignment = b.call('$.set', left, needs_proxy ? b.call('$.proxy', value) : value);
 
 				return logical_operator === null
 					? assignment

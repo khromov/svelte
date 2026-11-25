@@ -25,7 +25,7 @@ export default function Bind_component_snippet($$anchor) {
 		},
 
 		set value($$value) {
-			$.set(value, $$value, true);
+			$.set(value, $.proxy($$value));
 		}
 	});
 

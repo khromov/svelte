@@ -25,7 +25,7 @@ export function add_state_transformers(context) {
 			context.state.transform[name] = {
 				read: binding.declaration_kind === 'var' ? (node) => b.call('$.safe_get', node) : get_value,
 				assign: (node, value, proxy = false) => {
-					let call = b.call('$.set', node, value, proxy && b.true);
+					let call = b.call('$.set', node, proxy ? b.call('$.proxy', value) : value);
 
 					if (context.state.scope.get(`$${node.name}`)?.kind === 'store_sub') {
 						call = b.call('$.store_unsub', call, b.literal(`$${node.name}`), b.id('$$stores'));
