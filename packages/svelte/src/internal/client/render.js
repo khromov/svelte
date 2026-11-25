@@ -1,6 +1,7 @@
 /** @import { ComponentContext, Effect, EffectNodes, TemplateNode } from '#client' */
 /** @import { Component, ComponentType, SvelteComponent, MountOptions } from '../../index.js' */
 /** @import { Renderer } from './custom-renderer/types.js' */
+/** @import { Boundary } from './dom/blocks/boundary.js' */
 import { DEV } from 'esm-env';
 import {
 	clear_text_content,
@@ -17,13 +18,26 @@ import {
 import { HYDRATION_END, HYDRATION_ERROR, HYDRATION_START } from '../../constants.js';
 import { active_effect } from './runtime.js';
 import { push, pop, component_context, mark_as_component } from './context.js';
-import { component_root } from './reactivity/effects.js';
-import { hydrate_node, hydrating, set_hydrate_node, set_hydrating } from './dom/hydration.js';
+import { block, branch, component_root } from './reactivity/effects.js';
+import {
+	hydrate_next,
+	hydrate_node,
+	hydrating,
+	read_hydration_instruction,
+	set_hydrate_node,
+	set_hydrating
+} from './dom/hydration.js';
 import { listen_to_delegated_events } from './dom/elements/events.js';
 import * as w from './warnings.js';
 import * as e from './errors.js';
 import { assign_nodes } from './dom/template.js';
-import { COMMENT_NODE, TEXT_CACHE } from './constants.js';
+import {
+	BOUNDARY_EFFECT,
+	COMMENT_NODE,
+	EFFECT_PRESERVED,
+	EFFECT_TRANSPARENT,
+	TEXT_CACHE
+} from './constants.js';
 import { boundary } from './dom/blocks/boundary.js';
 import { push_renderer, pop_renderer } from './custom-renderer/state.js';
 import { async_mode_flag, custom_renderers_flag } from '../flags/index.js';
@@ -201,47 +215,80 @@ function _mount_inner(
 		var anchor_node =
 			anchor ?? /** @type {Text} */ (append_child(/** @type {Node} */ (target), create_anchor()));
 
-		boundary(
-			/** @type {TemplateNode} */ (anchor_node),
-			{
-				pending: () => {}
-			},
-			(anchor_node) => {
-				push({});
-				var ctx = /** @type {ComponentContext} */ (component_context);
-				if (context) ctx.c = context;
+		/** @param {Node} anchor_node */
+		var children = (anchor_node) => {
+			push({});
+			var ctx = /** @type {ComponentContext} */ (component_context);
+			if (context) ctx.c = context;
 
-				if (events) {
-					// We can't spread the object or else we'd lose the state proxy stuff, if it is one
-					/** @type {any} */ (props).$$events = events;
+			if (events) {
+				// We can't spread the object or else we'd lose the state proxy stuff, if it is one
+				/** @type {any} */ (props).$$events = events;
+			}
+
+			if (hydrating) {
+				assign_nodes(/** @type {TemplateNode} */ (anchor_node), null);
+			}
+
+			should_intro = intro;
+			// @ts-expect-error the public typings are not what the actual function looks like
+			component = Component(anchor_node, props) || mark_as_component();
+			should_intro = true;
+
+			if (hydrating) {
+				/** @type {Effect & { nodes: EffectNodes }} */ (active_effect).nodes.end = hydrate_node;
+
+				if (
+					hydrate_node === null ||
+					node_type(hydrate_node) !== COMMENT_NODE ||
+					get_node_value(hydrate_node) !== HYDRATION_END
+				) {
+					w.hydration_mismatch();
+					throw HYDRATION_ERROR;
 				}
+			}
 
+			pop();
+		};
+
+		if (async_mode_flag) {
+			boundary(
+				/** @type {TemplateNode} */ (anchor_node),
+				{
+					pending: () => {}
+				},
+				children,
+				transformError
+			);
+		} else {
+			// Without async mode the root boundary is never pending, and errors pass through it,
+			// so it is replaced with the same effects and a stand-in for the `Boundary` object
+			block(() => {
 				if (hydrating) {
-					assign_nodes(/** @type {TemplateNode} */ (anchor_node), null);
+					read_hydration_instruction(hydrate_node);
+					hydrate_next();
 				}
 
-				should_intro = intro;
-				// @ts-expect-error the public typings are not what the actual function looks like
-				component = Component(anchor_node, props) || mark_as_component();
-				should_intro = true;
+				branch(() => {
+					var effect = /** @type {Effect} */ (active_effect);
 
-				if (hydrating) {
-					/** @type {Effect & { nodes: EffectNodes }} */ (active_effect).nodes.end = hydrate_node;
+					var root = {
+						parent: effect.b,
+						is_pending: false,
+						transform_error: transformError ?? effect.b?.transform_error,
+						/** @param {unknown} error */
+						error(error) {
+							throw error;
+						}
+					};
 
-					if (
-						hydrate_node === null ||
-						node_type(hydrate_node) !== COMMENT_NODE ||
-						get_node_value(hydrate_node) !== HYDRATION_END
-					) {
-						w.hydration_mismatch();
-						throw HYDRATION_ERROR;
-					}
-				}
+					effect.b = /** @type {Boundary} */ (/** @type {unknown} */ (root));
+					effect.f |= BOUNDARY_EFFECT;
 
-				pop();
-			},
-			transformError
-		);
+					children(/** @type {TemplateNode} */ (anchor_node));
+				});
+			}, EFFECT_TRANSPARENT | EFFECT_PRESERVED);
+		}
 
 		// Setup event delegation _after_ component is mounted - if an error would happen during mount, it would otherwise not be cleaned up.
 		// When mounting with a custom renderer the target isn't a DOM node; any DOM content inside it is rendered
