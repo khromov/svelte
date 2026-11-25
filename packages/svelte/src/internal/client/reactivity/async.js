@@ -29,6 +29,7 @@ import {
 	is_uninitialized
 } from './deriveds.js';
 import { async_effect, block, branch } from './effects.js';
+import { effect_pending } from '../dom/blocks/boundary.js';
 
 /**
  * @param {Blocker[]} blockers
@@ -525,15 +526,17 @@ export function increment_pending() {
 		pending = pending.parent;
 	}
 
+	var counter = boundary ? effect_pending(boundary) : null;
+
 	batch.increment(effect);
 	pending?.increment(effect, batch);
-	boundary?.update_effect_pending(1);
+	counter?.update(1);
 
 	return () => {
 		merge_target(batch).decrement(effect);
 		// The boundary keeps counts under the originating batch, even if it was merged.
 		pending?.decrement(effect, batch);
-		boundary?.update_effect_pending(-1);
+		counter?.update(-1);
 	};
 }
 

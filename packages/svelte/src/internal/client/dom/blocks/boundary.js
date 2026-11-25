@@ -112,8 +112,8 @@ export class Boundary {
 	/** @type {DocumentFragment | null} */
 	#offscreen_fragment = null;
 
-	#local_pending_count = 0;
-	#pending_count_update_queued = false;
+	/** @type {EffectPending | null} */
+	effect_pending = null;
 
 	/**
 	 * User effects created inside this boundary. They will run when the boundary is revealed
@@ -127,27 +127,6 @@ export class Boundary {
 	 * @type {Map<Batch, Map<Effect, number>>}
 	 */
 	#pending = new Map();
-
-	/**
-	 * A source containing the number of pending async deriveds/expressions.
-	 * Only created if `$effect.pending()` is used inside the boundary,
-	 * otherwise updating the source results in needless `Batch.ensure()`
-	 * calls followed by no-op flushes
-	 * @type {Source<number> | null}
-	 */
-	#effect_pending = null;
-
-	#effect_pending_subscriber = createSubscriber(() => {
-		this.#effect_pending = source(this.#local_pending_count);
-
-		if (DEV) {
-			tag(this.#effect_pending, '$effect.pending()');
-		}
-
-		return () => {
-			this.#effect_pending = null;
-		};
-	});
 
 	/**
 	 * @param {TemplateNode} node
@@ -336,7 +315,7 @@ export class Boundary {
 	#render() {
 		try {
 			this.is_pending = this.has_pending_snippet();
-			this.#local_pending_count = 0;
+			if (this.effect_pending !== null) this.effect_pending.count = 0;
 
 			this.#main_effect = branch(() => {
 				this.#children(this.#anchor);
@@ -499,32 +478,6 @@ export class Boundary {
 		}
 	}
 
-	/**
-	 * Update the source that powers `$effect.pending()` inside this boundary.
-	 * Do not call from inside the class
-	 * @param {1 | -1} d
-	 */
-	update_effect_pending(d) {
-		if (!async_mode_flag) return;
-
-		this.#local_pending_count += d;
-
-		if (!this.#effect_pending || this.#pending_count_update_queued) return;
-		this.#pending_count_update_queued = true;
-
-		queue_micro_task(() => {
-			this.#pending_count_update_queued = false;
-			if (this.#effect_pending) {
-				internal_set(this.#effect_pending, this.#local_pending_count);
-			}
-		});
-	}
-
-	get_effect_pending() {
-		this.#effect_pending_subscriber();
-		return get(/** @type {Source<number>} */ (this.#effect_pending));
-	}
-
 	/** @param {unknown} error */
 	error(error) {
 		if (error === HYDRATION_ERROR) {
@@ -642,6 +595,64 @@ export class Boundary {
 	}
 }
 
+/**
+ * The number of pending async deriveds/expressions inside a boundary, which `$effect.pending()` reads
+ */
+class EffectPending {
+	count = 0;
+
+	#update_queued = false;
+
+	/**
+	 * A source containing `count`. Only created while `$effect.pending()` is read,
+	 * otherwise updating the source results in needless `Batch.ensure()`
+	 * calls followed by no-op flushes
+	 * @type {Source<number> | null}
+	 */
+	#source = null;
+
+	#subscriber = createSubscriber(() => {
+		this.#source = source(this.count);
+
+		if (DEV) {
+			tag(this.#source, '$effect.pending()');
+		}
+
+		return () => {
+			this.#source = null;
+		};
+	});
+
+	/** @param {1 | -1} d */
+	update(d) {
+		if (!async_mode_flag) return;
+
+		this.count += d;
+
+		if (!this.#source || this.#update_queued) return;
+		this.#update_queued = true;
+
+		queue_micro_task(() => {
+			this.#update_queued = false;
+			if (this.#source) {
+				internal_set(this.#source, this.count);
+			}
+		});
+	}
+
+	get() {
+		this.#subscriber();
+		return get(/** @type {Source<number>} */ (this.#source));
+	}
+}
+
+/**
+ * @param {Boundary} boundary
+ */
+export function effect_pending(boundary) {
+	return (boundary.effect_pending ??= new EffectPending());
+}
+
 export function pending() {
 	if (active_effect === null) {
 		e.effect_pending_outside_reaction();
@@ -653,5 +664,5 @@ export function pending() {
 		return 0; // TODO eventually we will need this to be global
 	}
 
-	return boundary.get_effect_pending();
+	return effect_pending(boundary).get();
 }

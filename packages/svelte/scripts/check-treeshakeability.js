@@ -166,9 +166,9 @@ check_bundle(
 	'rebases.delete(batch)',
 	'forks.set(batch, run)',
 	'rebases.add(',
-	'#decrement_queued = true',
-	'this.#local_pending_count += d'
+	'#decrement_queued = true'
 );
+check_bundle('$effect.pending()', 'class EffectPending', 'function createSubscriber');
 
 if (failed) {
 	// eslint-disable-next-line no-console
