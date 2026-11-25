@@ -13,7 +13,7 @@ export default function Class_state_field_constructor_assignment($$anchor, $$pro
 		}
 
 		set a(value) {
-			$.set(this.#a, value, true);
+			$.set(this.#a, $.proxy(value));
 		}
 
 		#b = $.state();

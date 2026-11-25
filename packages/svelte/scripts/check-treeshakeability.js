@@ -169,6 +169,7 @@ check_bundle(
 	'#decrement_queued = true'
 );
 check_bundle('$effect.pending()', 'class EffectPending', 'function createSubscriber');
+check_bundle('State proxy', 'state_descriptors_fixed');
 
 if (failed) {
 	// eslint-disable-next-line no-console

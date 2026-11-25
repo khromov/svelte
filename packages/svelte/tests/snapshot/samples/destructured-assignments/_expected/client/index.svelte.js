@@ -10,8 +10,8 @@ export function update(array) {
 	((array) => {
 		var $$array = $.to_array(array, 2);
 
-		$.set(a, $$array[0], true);
-		$.set(b, $$array[1], true);
+		$.set(a, $.proxy($$array[0]));
+		$.set(b, $.proxy($$array[1]));
 	})(array);
 
 	[c, d] = array;

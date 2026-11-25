@@ -5,7 +5,7 @@ export function createWorkspace() {
 	let entries = $.state($.proxy({}));
 
 	$.user_effect(() => {
-		$.set(entries, /* @__PURE__ */ Object.create(null), true);
+		$.set(entries, /* @__PURE__ */ $.proxy(Object.create(null)));
 	});
 
 	function current() {

@@ -144,7 +144,7 @@ export function proxy(value) {
 					return s;
 				});
 			} else {
-				unchecked_set(s, descriptor.value, true);
+				unchecked_set(s, proxy(descriptor.value));
 			}
 
 			return true;

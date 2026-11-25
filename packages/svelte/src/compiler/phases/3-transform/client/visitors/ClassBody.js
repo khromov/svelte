@@ -33,7 +33,7 @@ export function ClassBody(node, context) {
 		if (field.node.type === 'AssignmentExpression') {
 			const member = b.member(b.this, field.key);
 
-			const should_proxy = field.type === '$state' && true; // TODO
+			const value = field.type === '$state' ? b.call('$.proxy', b.id('value')) : b.id('value');
 
 			const key = b.key(name);
 
@@ -42,12 +42,7 @@ export function ClassBody(node, context) {
 
 				b.method('get', key, [], [b.return(b.call('$.get', member))]),
 
-				b.method(
-					'set',
-					key,
-					[b.id('value')],
-					[b.stmt(b.call('$.set', member, b.id('value'), should_proxy && b.true))]
-				)
+				b.method('set', key, [b.id('value')], [b.stmt(b.call('$.set', member, value))])
 			);
 		}
 	}
@@ -90,19 +85,14 @@ export function ClassBody(node, context) {
 				call = b.call('$.tag', call, b.literal(`${declaration.id?.name ?? '[class]'}.${name}`));
 			}
 			const member = b.member(b.this, field.key);
-			const should_proxy = field.type === '$state' && true; // TODO
+			const value = field.type === '$state' ? b.call('$.proxy', b.id('value')) : b.id('value');
 
 			body.push(
 				b.prop_def(field.key, call),
 
 				b.method('get', definition.key, [], [b.return(b.call('$.get', member))]),
 
-				b.method(
-					'set',
-					definition.key,
-					[b.id('value')],
-					[b.stmt(b.call('$.set', member, b.id('value'), should_proxy && b.true))]
-				)
+				b.method('set', definition.key, [b.id('value')], [b.stmt(b.call('$.set', member, value))])
 			);
 		}
 	}
