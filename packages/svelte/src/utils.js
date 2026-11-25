@@ -214,7 +214,6 @@ export function normalize_attribute(name) {
 }
 
 const DOM_PROPERTIES = [
-	...DOM_BOOLEAN_ATTRIBUTES,
 	'formNoValidate',
 	'isMap',
 	'noModule',
@@ -235,7 +234,7 @@ const DOM_PROPERTIES = [
  * @param {string} name
  */
 export function is_dom_property(name) {
-	return DOM_PROPERTIES.includes(name);
+	return DOM_BOOLEAN_ATTRIBUTES.includes(name) || DOM_PROPERTIES.includes(name);
 }
 
 const NON_STATIC_PROPERTIES = ['autofocus', 'muted', 'defaultValue', 'defaultChecked'];
