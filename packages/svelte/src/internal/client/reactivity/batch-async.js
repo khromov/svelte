@@ -318,6 +318,11 @@ export function before_commit_async(batch, effects, render_effects, revealed_bou
  * @param {Batch | null} next_batch
  */
 export function after_commit_async(batch, next_batch) {
+	if (batch.is_sync) {
+		batch.linked = false;
+		return;
+	}
+
 	if (batch.p.size === 0 && (batch.s.length === 0 || next_batch !== null)) {
 		unlink_batch(batch);
 	}
@@ -606,6 +611,11 @@ function move_to_front(batch) {
  */
 export function unlink_batch(batch) {
 	if (!batch.linked) return;
+
+	if (batch.is_sync) {
+		batch.linked = false;
+		return;
+	}
 
 	var prev = batch.prev;
 	var next = batch.next;

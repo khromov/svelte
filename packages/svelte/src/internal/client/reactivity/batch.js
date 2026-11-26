@@ -300,11 +300,11 @@ function process_step(batch) {
 	/** @type {Effect[]} */
 	var effects = (collected_effects = []);
 
-	/** @type {Effect[] | null} */
-	var render_effects = async_mode_flag ? [] : null;
+	/** @type {Effect[]} */
+	var render_effects = [];
 
-	/** @type {Boundary[] | null} */
-	var revealed_boundaries = async_mode_flag ? [] : null;
+	/** @type {Boundary[]} */
+	var revealed_boundaries = [];
 
 	/** @type {Effect[]} */
 	var updates = (legacy_updates = []);
@@ -336,8 +336,8 @@ function process_step(batch) {
 
 		if (batch.s.length > 0) {
 			if (async_mode_flag) {
-				for (const effect of /** @type {Effect[]} */ (render_effects)) batch.s.push(effect);
-				/** @type {Effect[]} */ (render_effects).length = 0;
+				for (const effect of render_effects) batch.s.push(effect);
+				render_effects.length = 0;
 			}
 
 			for (const effect of effects) batch.s.push(effect);
@@ -361,8 +361,8 @@ function process_step(batch) {
 		var redirect = before_commit_async(
 			batch,
 			effects,
-			/** @type {Effect[]} */ (render_effects),
-			/** @type {Boundary[]} */ (revealed_boundaries),
+			render_effects,
+			revealed_boundaries,
 			updates
 		);
 		if (redirect !== null) {
@@ -380,9 +380,7 @@ function process_step(batch) {
 	try {
 		is_flushing_effects = true;
 
-		var earlier_writes = async_mode_flag
-			? flush_queued_effects(/** @type {Effect[]} */ (render_effects))
-			: null;
+		var earlier_writes = async_mode_flag ? flush_queued_effects(render_effects) : null;
 
 		if (custom_renderers_flag && before_effects !== null) {
 			before_effects();
@@ -610,8 +608,8 @@ function resolve_roots(batch) {
  * @param {Batch} batch
  * @param {Effect} root
  * @param {Effect[]} effects
- * @param {Effect[] | null} render_effects
- * @param {Boundary[] | null} revealed_boundaries
+ * @param {Effect[]} render_effects
+ * @param {Boundary[]} revealed_boundaries
  */
 function traverse_batch(batch, root, effects, render_effects, revealed_boundaries) {
 	root.f ^= CLEAN;
@@ -632,7 +630,7 @@ function traverse_batch(batch, root, effects, render_effects, revealed_boundarie
 			} else if ((flags & EFFECT) !== 0) {
 				effects.push(effect);
 			} else if (async_mode_flag ? (flags & (RENDER_EFFECT | MANAGED_EFFECT)) !== 0 : false) {
-				/** @type {Effect[]} */ (render_effects).push(effect);
+				render_effects.push(effect);
 			} else if (is_dirty(effect)) {
 				update_effect(effect);
 			}
@@ -651,7 +649,7 @@ function traverse_batch(batch, root, effects, render_effects, revealed_boundarie
 					var boundary = /** @type {Boundary} */ (effect.b);
 
 					if (boundary.is_pending && boundary.is_ready(batch)) {
-						/** @type {Boundary[]} */ (revealed_boundaries).push(boundary);
+						revealed_boundaries.push(boundary);
 					}
 				}
 			}
