@@ -167,7 +167,17 @@ check_bundle(
 	'forks.set(batch, run)',
 	'rebases.add(',
 	'#decrement_queued = true',
-	'this.#local_pending_count += d'
+	'this.#local_pending_count += d',
+	// the view of state that each batch has, the runs it records, and merging batches
+	'function get_view',
+	'function set_view',
+	'function keep_global_run',
+	'function promote_record',
+	'function prune_edges',
+	'function abort_record',
+	'function supersedes',
+	'merge_requests.add(',
+	'records ??= new Map()'
 );
 
 if (failed) {
