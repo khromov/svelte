@@ -424,6 +424,11 @@ function abort_replaced(reaction, flags) {
 	// a teardown's run of a derived doesn't replace anything (see `teardown_view`)
 	if (is_derived && is_destroying_effect) return;
 
+	if (!async_mode_flag) {
+		abort_signal(reaction.ac);
+		return;
+	}
+
 	var real = batch === null || !batch.is_fork;
 
 	abort_record(reaction, view_batch?.records?.get(reaction), true);
@@ -488,12 +493,14 @@ export function abort_all(reaction) {
 	abort_signal(reaction.ac);
 	reaction.ac = null;
 
-	for (var b = first_batch; b !== null; b = b.next) {
-		var record = b.records?.get(reaction);
+	if (async_mode_flag) {
+		for (var b = first_batch; b !== null; b = b.next) {
+			var record = b.records?.get(reaction);
 
-		if (record?.ac) {
-			abort_signal(record.ac);
-			record.ac = null;
+			if (record?.ac) {
+				abort_signal(record.ac);
+				record.ac = null;
+			}
 		}
 	}
 
@@ -513,6 +520,8 @@ function is_recorded_effect(flags) {
 	) {
 		return false;
 	}
+
+	if (!async_mode_flag) return false;
 
 	return view_batch !== null && view_batch === current_batch;
 }
@@ -831,7 +840,7 @@ function update_record(reaction, flags, length, value, error) {
 	var tracking = effect_tracking() && (reaction.f & CONNECTED) !== 0;
 	var edges = reaction.edges;
 
-	if (keep && edges !== null) {
+	if (keep && async_mode_flag && edges !== null) {
 		if (new_deps !== null) {
 			// the edges may be a run's `deps` as well, see `update_dependencies`
 			reaction.edges = edges = edges.slice();
@@ -868,7 +877,7 @@ function update_record(reaction, flags, length, value, error) {
 		reaction.edges = read;
 	}
 
-	if (should_record) {
+	if (should_record && async_mode_flag) {
 		var batch = /** @type {Batch} */ (view_batch);
 
 		(batch.records ??= new Map()).set(
@@ -919,6 +928,8 @@ function update_record(reaction, flags, length, value, error) {
  * @param {number} flags the flags of the derived before the run
  */
 function keep_global_run(derived, flags) {
+	if (!async_mode_flag) return;
+
 	var dv = derived.dv;
 
 	if (
@@ -1134,7 +1145,9 @@ function remove_reaction(signal, dependency) {
 			// in the real world, and in every batch's view (which would otherwise reuse its record of the derived)
 			set_signal_status(derived, DIRTY);
 			derived.dv = null;
-			for (var b = first_batch; b !== null; b = b.next) b.records?.delete(derived);
+			if (async_mode_flag) {
+				for (var b = first_batch; b !== null; b = b.next) b.records?.delete(derived);
+			}
 			view_cache?.delete(derived);
 		}
 

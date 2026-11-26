@@ -1477,6 +1477,8 @@ export class Batch {
 
 	/** @param {boolean} commit whether the effects' runs become global state */
 	#release_records(commit = false) {
+		if (!async_mode_flag) return;
+
 		var records = this.records;
 		if (records === null) return;
 

@@ -487,7 +487,7 @@ export function update_derived(signal) {
 	var records = view_batch?.records;
 	var record = records?.get(derived);
 
-	if (record !== undefined && is_current(record.deps, record.dv)) {
+	if (record !== undefined && async_mode_flag && is_current(record.deps, record.dv)) {
 		/** @type {Map<Reaction, BatchRecord>} */ (records).delete(derived);
 		promote_record(derived, record);
 	} else {
