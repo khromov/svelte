@@ -63,7 +63,12 @@ import { handle_error } from './error-handling.js';
 import { UNINITIALIZED } from '../../constants.js';
 import { captured_signals } from './legacy.js';
 import { without_reactive_context } from './dom/elements/bindings/shared.js';
-import { set_signal_status, update_derived_status } from './reactivity/status.js';
+import {
+	abort_signals_flag,
+	enable_abort_signals_flag,
+	set_signal_status,
+	update_derived_status
+} from './reactivity/status.js';
 import { merge_target } from './reactivity/async.js';
 import * as e from './errors.js';
 import * as w from './warnings.js';
@@ -375,13 +380,16 @@ export function get_abort_signal(reaction) {
 	}
 
 	reaction.f |= HAS_ABORT_CONTROLLER;
+	enable_abort_signals_flag();
 
 	return (abort_controller ??= new AbortController()).signal;
 }
 
 /** @param {AbortController | null | undefined} controller */
 function abort_signal(controller) {
-	if (controller) without_reactive_context(() => controller.abort(STALE_REACTION));
+	if (abort_signals_flag && controller) {
+		without_reactive_context(() => controller.abort(STALE_REACTION));
+	}
 }
 
 /**
@@ -393,7 +401,7 @@ function abort_signal(controller) {
  * and the batches that the new run supersedes still hold the record then, but don't count
  */
 export function abort_record(reaction, record, rerun = false) {
-	if (!record?.ac) return;
+	if (!abort_signals_flag || !record?.ac) return;
 
 	for (var b = first_batch; b !== null; b = b.next) {
 		if (
@@ -419,6 +427,8 @@ export function abort_record(reaction, record, rerun = false) {
  * @param {number} flags
  */
 function abort_replaced(reaction, flags) {
+	if (!abort_signals_flag) return;
+
 	var batch = current_batch;
 	var is_derived = (flags & DERIVED) !== 0;
 
@@ -483,7 +493,7 @@ function supersedes(batch, other) {
  * @param {Reaction} reaction
  */
 export function abort_all(reaction) {
-	if ((reaction.f & HAS_ABORT_CONTROLLER) === 0) return false;
+	if (!abort_signals_flag || (reaction.f & HAS_ABORT_CONTROLLER) === 0) return false;
 	reaction.f ^= HAS_ABORT_CONTROLLER;
 
 	abort_signal(reaction.ac);
@@ -622,7 +632,7 @@ export function update_reaction(reaction) {
 	} finally {
 		var signal = /** @type {AbortController | null} */ (abort_controller)?.signal;
 
-		if (batch !== null && signal !== undefined) {
+		if (batch !== null && signal !== undefined && abort_signals_flag) {
 			// The reaction that requested the signal identifies the merge target, even if
 			// another reaction awaits its result (e.g. `let promise = $derived(load(...))`).
 			signal.addEventListener('abort', () => {
@@ -1130,7 +1140,7 @@ function remove_reaction(signal, dependency) {
 
 		// Call abort controller, noone's listening to this derived anymore: no live run of any reaction, in any batch,
 		// read it (the edges cover them all, see `Reaction#edges`). That includes the runs of it that batches hold
-		if (abort_all(derived)) {
+		if (abort_signals_flag && abort_all(derived)) {
 			// ensure it reruns right away next time instead of potentially returning a rejected promise as its value —
 			// in the real world, and in every batch's view (which would otherwise reuse its record of the derived)
 			set_signal_status(derived, DIRTY);

@@ -3,6 +3,13 @@ import { CLEAN, CONNECTED, DIRTY, MAYBE_DIRTY } from '#client/constants';
 
 const STATUS_MASK = ~(DIRTY | MAYBE_DIRTY | CLEAN);
 
+/** True once a reaction has asked for an abort signal (`getAbortSignal`) */
+export let abort_signals_flag = false;
+
+export function enable_abort_signals_flag() {
+	abort_signals_flag = true;
+}
+
 /**
  * @param {Signal} signal
  * @param {number} status
