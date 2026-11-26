@@ -43,7 +43,7 @@ import {
 } from './batch.js';
 import { proxy } from '../proxy.js';
 import { execute_derived } from './deriveds.js';
-import { set_signal_status } from './status.js';
+import { eager_effects_flag, set_signal_status } from './status.js';
 
 /** @type {Set<Effect>} */
 export let eager_effects = new Set();
@@ -273,6 +273,7 @@ export function internal_set(source, value, updated_during_traversal = null) {
 
 export function flush_eager_effects() {
 	eager_effects_deferred = false;
+	if (!eager_effects_flag) return;
 
 	// eager effects run in the real world, not in the view of a batch
 	in_real_world(run_eager_effects);

@@ -47,7 +47,7 @@ import { get_next_sibling, remove_node, append_child } from '../dom/operations.j
 import { component_context, dev_current_component_function, dev_stack } from '../context.js';
 import { Batch, collected_effects, set_teardown_context, teardown_context } from './batch.js';
 import { flatten } from './async.js';
-import { set_signal_status } from './status.js';
+import { enable_eager_effects_flag, set_signal_status } from './status.js';
 import { push_renderer, current_renderer, pop_renderer } from '../custom-renderer/state.js';
 import { custom_renderers_flag } from '../../flags/index.js';
 
@@ -258,6 +258,7 @@ export function user_pre_effect(fn) {
 
 /** @param {() => void | (() => void)} fn */
 export function eager_effect(fn) {
+	enable_eager_effects_flag();
 	return create_effect(EAGER_EFFECT, fn);
 }
 

@@ -54,7 +54,7 @@ import {
 } from './sources.js';
 import { eager_effect, teardown, unlink_effect } from './effects.js';
 import { UNINITIALIZED } from '../../../constants.js';
-import { set_signal_status, update_derived_status } from './status.js';
+import { eager_effects_flag, set_signal_status, update_derived_status } from './status.js';
 import { invariant } from '../../shared/dev.js';
 import { OBSOLETE } from './deriveds.js';
 import { is_runes } from '../context.js';
@@ -1056,7 +1056,7 @@ export class Batch {
 			this.mark(source, DIRTY, updated_during_traversal);
 			seen = null;
 
-			if (eager_effects.size > 0 && !eager_effects_deferred) {
+			if (eager_effects_flag && eager_effects.size > 0 && !eager_effects_deferred) {
 				flush_eager_effects();
 			}
 		}
@@ -1406,7 +1406,7 @@ export class Batch {
 			var not_dirty = (flags & DIRTY) === 0;
 
 			if ((flags & EAGER_EFFECT) !== 0) {
-				if (!this.is_fork) {
+				if (eager_effects_flag && !this.is_fork) {
 					// don't set a DIRTY reaction to MAYBE_DIRTY
 					if (not_dirty) {
 						set_signal_status(reaction, status);

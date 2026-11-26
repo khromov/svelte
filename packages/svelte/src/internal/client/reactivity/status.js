@@ -3,6 +3,13 @@ import { CLEAN, CONNECTED, DIRTY, MAYBE_DIRTY } from '#client/constants';
 
 const STATUS_MASK = ~(DIRTY | MAYBE_DIRTY | CLEAN);
 
+/** True once an eager effect (`$state.eager`, `$inspect`) has been created */
+export let eager_effects_flag = false;
+
+export function enable_eager_effects_flag() {
+	eager_effects_flag = true;
+}
+
 /** True once a reaction has asked for an abort signal (`getAbortSignal`) */
 export let abort_signals_flag = false;
 
