@@ -1,5 +1,4 @@
-/** @import { EachItem, EachOutroGroup, EachState, Effect, EffectNodes, MaybeSource, TemplateNode } from '#client' */
-/** @import { Batch } from '../../reactivity/batch.js'; */
+/** @import { Batch, EachItem, EachOutroGroup, EachState, Effect, EffectNodes, MaybeSource, TemplateNode } from '#client' */
 import {
 	EACH_INDEX_REACTIVE,
 	EACH_IS_ANIMATED,

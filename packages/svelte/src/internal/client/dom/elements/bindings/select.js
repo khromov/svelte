@@ -1,4 +1,4 @@
-/** @import { Batch } from '../../../reactivity/batch.js' */
+/** @import { Batch } from '#client' */
 import { effect, teardown } from '../../../reactivity/effects.js';
 import { listen_to_event_and_reset_event } from './shared.js';
 import { is } from '../../../proxy.js';

@@ -1,5 +1,4 @@
-/** @import { Effect, Source, Value } from '#client' */
-/** @import { Batch } from './batch.js' */
+/** @import { Batch, Effect, Source, Value } from '#client' */
 import { DESTROYED, EFFECT_TRANSPARENT, STALE_REACTION } from '#client/constants';
 import { DEV } from 'esm-env';
 import {
@@ -20,7 +19,12 @@ import {
 	set_active_reaction
 } from '../runtime.js';
 import { current_batch, revalidate_branch } from './batch.js';
-import { upgrade_batch_if_needed } from './batch-async.js';
+import {
+	activate_batch,
+	decrement_batch,
+	increment_batch,
+	upgrade_batch_if_needed
+} from './batch-async.js';
 import {
 	reactivity_loss_tracker,
 	derived,
@@ -162,7 +166,7 @@ export function capture() {
 			// A batch that was merged into another one continues as that one.
 			// TODO we only need the check here because `{#await ...}` blocks
 			// are anomalous. Once we retire them we can get rid of it
-			merge_target(batch).activate();
+			activate_batch(merge_target(batch));
 		}
 
 		if (DEV) {
@@ -526,12 +530,12 @@ export function increment_pending() {
 		pending = pending.parent;
 	}
 
-	batch.increment(effect);
+	increment_batch(batch, effect);
 	pending?.increment(effect, batch);
 	boundary?.update_effect_pending(1);
 
 	return () => {
-		merge_target(batch).decrement(effect);
+		decrement_batch(merge_target(batch), effect);
 		// The boundary keeps counts under the originating batch, even if it was merged.
 		pending?.decrement(effect, batch);
 		boundary?.update_effect_pending(-1);

@@ -1,5 +1,4 @@
-/** @import { BatchRecord, BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
-/** @import { Batch } from './reactivity/batch.js' */
+/** @import { Batch, BatchRecord, BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
 import { DEV } from 'esm-env';
 import { get_descriptors, get_prototype_of, includes, index_of } from '../shared/utils.js';
 import {
@@ -62,7 +61,7 @@ import {
 	view_batch,
 	view_cache
 } from './reactivity/batch.js';
-import { upgrade_batch_if_needed } from './reactivity/batch-async.js';
+import { get_batch_record, upgrade_batch_if_needed } from './reactivity/batch-async.js';
 import { handle_error } from './error-handling.js';
 import { UNINITIALIZED } from '../../constants.js';
 import { captured_signals } from './legacy.js';
@@ -282,7 +281,7 @@ export function changed_since(deps, wv, unchanged = null) {
 export function run_of(reaction) {
 	if ((reaction.f & (BLOCK_EFFECT | ASYNC)) !== 0 && view_batch !== null) {
 		if (async_mode_flag) {
-			return (!view_batch.is_sync && view_batch.get_record(reaction)) || reaction;
+			return get_batch_record(view_batch, reaction) || reaction;
 		}
 	}
 
@@ -830,24 +829,19 @@ function update_record(reaction, flags, length, value, error) {
 	// to the batch halfway through the loop
 	var dv = !should_record && batch_values === null && reaction.dv !== null ? reaction.dv : [];
 
-	if (async_mode_flag) {
-		for (var i = 0; i < length; i++) {
-			var dep = /** @type {Value[]} */ (read)[i];
+	for (var i = 0; i < length; i++) {
+		var dep = /** @type {Value[]} */ (read)[i];
+		if (async_mode_flag ? batch_values !== null : false) {
 			dv[i] = seen_version(dep);
 
-			// Within a batch's view, a derived's run belongs to the batch unless everything it read is the latest
-			// value: the version it saw is the real-world one, and — for a derived — that one is up to date
 			if (
-				batch_values !== null &&
 				(flags & DERIVED) !== 0 &&
 				(dv[i] !== dep.wv || (dep.f & (DERIVED | CLEAN)) === DERIVED)
 			) {
 				should_record = true;
 			}
-		}
-	} else {
-		for (i = 0; i < length; i++) {
-			dv[i] = /** @type {Value[]} */ (read)[i].wv;
+		} else {
+			dv[i] = dep.wv;
 		}
 	}
 
@@ -1036,7 +1030,7 @@ function derived_version(derived, batch, value, error) {
 	if (!async_mode_flag) return derived.wv;
 
 	if (!error) {
-		var previous = /** @type {DerivedRecord | undefined} */ (batch.get_record(derived));
+		var previous = /** @type {DerivedRecord | undefined} */ (get_batch_record(batch, derived));
 		if (previous !== undefined && !previous.e && derived.equals.call(previous, value)) {
 			return previous.wv;
 		}

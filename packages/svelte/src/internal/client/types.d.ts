@@ -1,7 +1,6 @@
 import type { Store } from '#shared';
 import { STATE_SYMBOL } from './constants.js';
-import type { Batch } from './reactivity/batch.js';
-import type { Effect, Source, Value } from './reactivity/types.js';
+import type { Batch, Effect, Source, Value } from './reactivity/types.js';
 
 declare global {
 	interface Window {

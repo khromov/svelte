@@ -105,6 +105,41 @@ export interface BatchRecord {
 	ac?: null | AbortController;
 }
 
+export interface Batch {
+	is_sync: boolean;
+	id: number;
+	started: boolean;
+	linked: boolean;
+	is_fork: boolean;
+	merged: Batch | null;
+	prev: Batch | null;
+	next: Batch | null;
+	current: Map<Value, BatchValue>;
+	previous: Map<Value, BatchValue>;
+	records: Map<Reaction, BatchRecord> | null;
+	async_deriveds: Map<
+		Effect,
+		{ promise: Promise<any>; resolve: (v?: any) => void; reject: (r: unknown) => void }
+	>;
+	merge_requests: Set<Batch>;
+	f: Batch[];
+	p: Map<Effect, number>;
+	q: boolean;
+	s: Effect[];
+	u: Map<Effect, number> | null;
+	x: Set<Effect> | null;
+	y: Set<Effect> | null;
+	c: Map<(batch: Batch) => void, Map<Value, BatchValue> | null> | null;
+	d: Map<(batch: Batch) => void, Map<Value, BatchValue> | null> | null;
+	w: {
+		promise: Promise<void>;
+		resolve: (value?: any) => void;
+		reject: (reason: unknown) => void;
+	} | null;
+	flush: () => void;
+	deactivate: () => void;
+}
+
 /** A record of a derived, which — unlike the record of an effect — has a value */
 export interface DerivedRecord extends BatchRecord {
 	v: any;

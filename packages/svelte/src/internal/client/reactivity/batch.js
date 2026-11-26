@@ -1,4 +1,4 @@
-/** @import { BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
+/** @import { Batch, BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
 /** @import { Boundary } from '../dom/blocks/boundary.js' */
 import {
 	BLOCK_EFFECT,
@@ -53,10 +53,10 @@ import { set_signal_status, update_derived_status } from './status.js';
 import { is_runes } from '../context.js';
 import {
 	after_commit_async,
-	Batch,
 	before_commit_async,
 	clear,
 	create_async_batch,
+	discard_async_batch,
 	flush_rebases,
 	fork,
 	is_batch_deferred,
@@ -66,7 +66,8 @@ import {
 	upgrade_batch_if_needed
 } from './batch-async.js';
 
-export { Batch, clear, fork };
+export { Batch } from './batch-async.js';
+export { clear, fork };
 
 /** @type {Batch | null} */
 export let first_batch = null;
@@ -187,40 +188,40 @@ export const source_stacks = new Set();
 var seen = null;
 var count_deps = 0;
 
-const sync_batch_proto = {
-	flush() {
-		batch_flush(/** @type {Batch} */ (/** @type {unknown} */ (this)));
-	},
-	deactivate: deactivate_batch,
-	discard() {
-		discard_sync_batch(/** @type {Batch} */ (/** @type {unknown} */ (this)));
-	}
-};
+/** @this {Batch} */
+function sync_flush_method() {
+	batch_flush(this);
+}
 
 /**
  * Creates a lightweight synchronous batch object without multi-batch/async allocations.
  * @returns {Batch}
  */
-function create_sync_batch() {
-	var batch = Object.create(sync_batch_proto);
-	batch.is_sync = true;
-	batch.started = false;
-	batch.linked = true;
-	batch.is_fork = false;
-	batch.merged = null;
-	batch.prev = null;
-	batch.next = null;
-	batch.current = new Map();
-	batch.previous = new Map();
-	batch.records = null;
-	batch.s = [];
-	batch.u = null;
-	batch.x = null;
-	batch.y = null;
-	batch.c = null;
-	batch.d = null;
-	batch.w = null;
-	return batch;
+export function create_sync_batch() {
+	return /** @type {Batch} */ (
+		/** @type {unknown} */ ({
+			is_sync: true,
+			id: 0,
+			started: false,
+			linked: true,
+			is_fork: false,
+			merged: null,
+			prev: null,
+			next: null,
+			current: new Map(),
+			previous: new Map(),
+			records: null,
+			s: [],
+			u: null,
+			x: null,
+			y: null,
+			c: null,
+			d: null,
+			w: null,
+			flush: sync_flush_method,
+			deactivate: deactivate_batch
+		})
+	);
 }
 
 /** @param {Batch} batch */
@@ -325,7 +326,7 @@ function process_step(batch) {
 			} catch (err) {
 				reset_branch(root, true);
 				if (async_mode_flag) {
-					if (!is_batch_deferred(batch)) batch.discard();
+					if (!is_batch_deferred(batch)) discard_async_batch(batch);
 				} else {
 					discard_sync_batch(batch);
 				}

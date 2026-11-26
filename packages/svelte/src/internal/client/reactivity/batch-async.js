@@ -1,5 +1,5 @@
 /** @import { Fork } from 'svelte' */
-/** @import { BatchRecord, BatchValue, Derived, Effect, Reaction, Source, Value } from '#client' */
+/** @import { Batch, BatchRecord, Derived, Effect, Reaction, Source, Value } from '#client' */
 /** @import { Boundary } from '../dom/blocks/boundary.js' */
 import {
 	ASYNC,
@@ -33,10 +33,8 @@ import { merge_target } from './async.js';
 import {
 	add_dirty_effect,
 	apply_write,
-	batch_flush,
-	capture_signal,
+	create_sync_batch,
 	current_batch,
-	deactivate_batch,
 	ensure_batch,
 	flushSync,
 	in_real_world,
@@ -92,234 +90,120 @@ function link_batch(batch) {
 	}
 }
 
-export class Batch {
-	is_sync = false;
+const batch_static = {
+	ensure: ensure_batch
+};
 
-	id = uid++;
+export { batch_static as Batch };
 
-	/** True as soon as processing started */
-	started = false;
+/**
+ * Whether async work in `effect` holds up `batch` — or, with `root`, the boundary whose content `root` is.
+ * @param {Batch} batch
+ * @param {Effect} effect
+ * @param {Effect | null} [root]
+ */
+export function is_batch_blocked_by(batch, effect, root = null) {
+	if (!async_mode_flag) return false;
 
-	linked = true;
+	for (var e = /** @type {Effect | null} */ (effect); e !== null && e !== root; e = e.parent) {
+		if (skips_branch(batch, e)) return false;
 
-	/** @type {Batch | null} */
-	prev = null;
-
-	/** @type {Batch | null} */
-	next = null;
-
-	/** @type {Map<Effect, ReturnType<typeof deferred<any>>>} */
-	async_deriveds = new Map();
-
-	/** @type {Map<Value, BatchValue>} */
-	current = new Map();
-
-	/** @type {Map<Value, BatchValue>} */
-	previous = new Map();
-
-	/** @type {Map<Reaction, BatchRecord> | null} */
-	records = null;
-
-	/**
-	 * Earlier batches whose changes are part of this batch's view (`folded`)
-	 * @type {Batch[]}
-	 */
-	f = [];
-
-	/**
-	 * Commit callbacks
-	 * @type {Map<(batch: Batch) => void, Map<Value, BatchValue> | null> | null}
-	 */
-	c = null;
-
-	/**
-	 * Discard callbacks
-	 * @type {Map<(batch: Batch) => void, Map<Value, BatchValue> | null> | null}
-	 */
-	d = null;
-
-	/**
-	 * Async effects currently in flight (`pending`)
-	 * @type {Map<Effect, number>}
-	 */
-	p = new Map();
-
-	/**
-	 * Deferred for `settled()`
-	 * @type {{ promise: Promise<void>, resolve: (value?: any) => void, reject: (reason: unknown) => void } | null}
-	 */
-	w = null;
-
-	/**
-	 * Unprocessed dirty effects
-	 * @type {Map<Effect, number> | null}
-	 */
-	u = null;
-
-	/**
-	 * Scheduled effects
-	 * @type {Effect[]}
-	 */
-	s = [];
-
-	/**
-	 * Skipped branches
-	 * @type {Set<Effect> | null}
-	 */
-	x = null;
-
-	/**
-	 * Unskipped branches
-	 * @type {Set<Effect> | null}
-	 */
-	y = null;
-
-	is_fork = false;
-
-	/** @type {Batch | null} */
-	merged = null;
-
-	/** @type {Set<Batch>} */
-	merge_requests = new Set();
-
-	/** Decrement microtask queued */
-	q = false;
-
-	constructor() {
-		link_batch(this);
+		if (
+			(e.f & (BOUNDARY_EFFECT | DESTROYED)) === BOUNDARY_EFFECT &&
+			/** @type {Boundary} */ (e.b).is_pending
+		) {
+			return false;
+		}
 	}
 
-	static ensure() {
-		return ensure_batch();
+	return true;
+}
+
+/**
+ * @param {Batch} batch
+ */
+export function discard_async_batch(batch) {
+	if (batch.d !== null) {
+		run_batch_callbacks(batch, batch.d);
 	}
 
-	/**
-	 * Whether async work in `effect` holds up this batch — or, with `root`, the boundary whose content `root` is.
-	 * @param {Effect} effect
-	 * @param {Effect | null} [root]
-	 */
-	is_blocked_by(effect, root = null) {
-		if (!async_mode_flag) return false;
-
-		for (var e = /** @type {Effect | null} */ (effect); e !== null && e !== root; e = e.parent) {
-			if (skips_branch(this, e)) return false;
-
-			if (
-				(e.f & (BOUNDARY_EFFECT | DESTROYED)) === BOUNDARY_EFFECT &&
-				/** @type {Boundary} */ (e.b).is_pending
-			) {
-				return false;
-			}
+	if (!batch.is_sync) {
+		for (const d of batch.async_deriveds.values()) {
+			d.reject(OBSOLETE);
 		}
 
-		return true;
+		unlink_batch(batch);
+	} else {
+		batch.linked = false;
 	}
 
-	/**
-	 * @param {Value} source
-	 * @param {any} value
-	 * @param {boolean} same
-	 * @param {boolean} [error]
-	 * @param {Effect[] | null} [updated_during_traversal]
-	 */
-	capture(source, value, same, error = false, updated_during_traversal = null) {
-		capture_signal(this, source, value, same, error, updated_during_traversal);
+	batch.w?.resolve();
+}
+
+/**
+ * @param {Batch} batch
+ */
+export function commit_writes(batch) {
+	if (!async_mode_flag || batch.is_sync) return;
+
+	commit_batch(batch);
+	if (batch.linked && batch.prev !== null) move_to_front(batch);
+}
+
+/**
+ * @param {Batch} batch
+ * @param {Effect} effect
+ */
+export function increment_batch(batch, effect) {
+	if (!async_mode_flag) return;
+
+	var count = batch.p.get(effect) ?? 0;
+	batch.p.set(effect, count + 1);
+}
+
+/**
+ * @param {Batch} batch
+ * @param {Effect} effect
+ */
+export function decrement_batch(batch, effect) {
+	if (!async_mode_flag) return;
+
+	var count = batch.p.get(effect) ?? 0;
+
+	if (count === 1) {
+		batch.p.delete(effect);
+	} else {
+		batch.p.set(effect, count - 1);
 	}
 
-	/**
-	 * @param {Effect} effect
-	 * @param {number} status
-	 */
-	schedule(effect, status) {
-		schedule_effect(this, effect, status);
-	}
+	if (batch.q) return;
+	batch.q = true;
 
-	deactivate() {
-		deactivate_batch();
-	}
+	queue_micro_task(() => {
+		batch.q = false;
 
-	flush() {
-		batch_flush(this);
-	}
-
-	discard() {
-		if (this.d !== null) {
-			run_batch_callbacks(this, this.d);
+		if (batch.linked) {
+			batch.flush();
 		}
+	});
+}
 
-		if (async_mode_flag) {
-			for (const d of this.async_deriveds.values()) {
-				d.reject(OBSOLETE);
-			}
-		}
+/**
+ * @param {Batch} batch
+ * @param {Reaction} reaction
+ * @returns {BatchRecord | undefined}
+ */
+export function get_batch_record(batch, reaction) {
+	var record = batch.records?.get(reaction);
+	if (!async_mode_flag || batch.is_sync) return record;
 
-		unlink_batch(this);
-		this.w?.resolve();
+	var i = batch.f.length;
+
+	while (record === undefined && i--) {
+		record = batch.f[i].records?.get(reaction);
 	}
 
-	commit_writes() {
-		if (!async_mode_flag) return;
-
-		commit_batch(this);
-		if (this.linked && this.prev !== null) move_to_front(this);
-	}
-
-	/**
-	 * @param {Effect} effect
-	 */
-	increment(effect) {
-		if (!async_mode_flag) return;
-
-		var count = this.p.get(effect) ?? 0;
-		this.p.set(effect, count + 1);
-	}
-
-	/**
-	 * @param {Effect} effect
-	 */
-	decrement(effect) {
-		if (!async_mode_flag) return;
-
-		var count = this.p.get(effect) ?? 0;
-
-		if (count === 1) {
-			this.p.delete(effect);
-		} else {
-			this.p.set(effect, count - 1);
-		}
-
-		if (this.q) return;
-		this.q = true;
-
-		queue_micro_task(() => {
-			this.q = false;
-
-			if (this.linked) {
-				this.flush();
-			}
-		});
-	}
-
-	activate() {
-		activate_batch(this);
-	}
-
-	/**
-	 * @param {Reaction} reaction
-	 * @returns {BatchRecord | undefined}
-	 */
-	get_record(reaction) {
-		var record = this.records?.get(reaction);
-		if (!async_mode_flag) return record;
-
-		var i = this.f.length;
-
-		while (record === undefined && i--) {
-			record = this.f[i].records?.get(reaction);
-		}
-
-		return record;
-	}
+	return record;
 }
 
 /**
@@ -330,7 +214,7 @@ export function is_batch_deferred(batch) {
 	if (batch.is_fork) return true;
 
 	for (const effect of batch.p.keys()) {
-		if (batch.is_blocked_by(effect)) {
+		if (is_batch_blocked_by(batch, effect)) {
 			return true;
 		}
 	}
@@ -438,13 +322,15 @@ export function after_commit_async(batch, next_batch) {
 		unlink_batch(batch);
 	}
 
-	batch.commit_writes();
+	commit_writes(batch);
 }
 
 /**
  * @param {Batch} batch
  */
-function activate_batch(batch) {
+export function activate_batch(batch) {
+	upgrade_batch_if_needed(batch);
+
 	if (last_processed !== batch.id) last_processed = null;
 
 	if (!async_mode_flag) {
@@ -589,7 +475,7 @@ function merge_batches(target, batch) {
 		batch.u.clear();
 	}
 
-	const discard = () => batch.discard();
+	const discard = () => discard_async_batch(batch);
 	on_batch_commit(target, discard);
 	on_batch_discard(target, discard);
 	batch.merged = target;
@@ -650,7 +536,7 @@ function commit_batch(self) {
 		}
 
 		if (obsolete && is_earlier) {
-			batch.discard();
+			discard_async_batch(batch);
 		} else if (sources.length > 0) {
 			if (DEV && !batch.q) {
 				invariant(batch.s.length === 0, 'Batch has scheduled effects');
@@ -741,14 +627,12 @@ export function unlink_batch(batch) {
 }
 
 export function create_async_batch() {
-	return new Batch();
+	return upgrade_batch_if_needed(create_sync_batch());
 }
 
 /**
- * Upgrades an in-flight sync batch object to a full async `Batch` in place when async mode
- * turns on while a sync batch is already pending or mid-traversal. Preserves object identity
- * so existing references (`current_batch`, `view_batch`, `WeakSet`s, `BranchManager` maps, and
- * queued microtasks) remain valid.
+ * Attaches async fields to a sync batch object and links it into the active batch list.
+ * Preserves object identity and prototype (no `Object.setPrototypeOf` needed).
  * @param {Batch} batch
  * @returns {Batch}
  */
@@ -764,7 +648,6 @@ export function upgrade_batch_if_needed(batch) {
 	batch.q = false;
 
 	link_batch(batch);
-	Object.setPrototypeOf(batch, Batch.prototype);
 	return batch;
 }
 
@@ -820,7 +703,7 @@ export function fork(fn) {
 				fn();
 			});
 		} catch (error) {
-			b.discard();
+			discard_async_batch(b);
 			b.deactivate();
 			throw error;
 		}
@@ -871,7 +754,7 @@ export function fork(fn) {
 		},
 		discard: () => {
 			if (!committed && batch.linked) {
-				batch.discard();
+				discard_async_batch(batch);
 			}
 
 			discarded = true;

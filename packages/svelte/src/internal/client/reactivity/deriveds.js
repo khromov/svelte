@@ -1,5 +1,4 @@
-/** @import { BatchRecord, BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
-/** @import { Batch } from './batch.js'; */
+/** @import { Batch, BatchRecord, BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
 import { DEV } from 'esm-env';
 import {
 	DERIVED,
@@ -42,7 +41,8 @@ import { get_error, invariant } from '../../shared/dev.js';
 import { async_mode_flag, tracing_mode_flag } from '../../flags/index.js';
 import { component_context } from '../context.js';
 import { UNINITIALIZED } from '../../../constants.js';
-import { batch_values, current_batch, view_batch, view_cache } from './batch.js';
+import { batch_values, capture_signal, current_batch, view_batch, view_cache } from './batch.js';
+import { get_batch_record } from './batch-async.js';
 import { current_runner, increment_pending, merge_target, unset_context } from './async.js';
 import { deferred, includes, noop } from '../../shared/utils.js';
 import { update_derived_status } from './status.js';
@@ -272,7 +272,7 @@ export function async_expression(fn, label, location, onready) {
 			}
 
 			var same = signal.equals(value) && !error && (signal.f & ERROR_VALUE) === 0;
-			merge_target(batch).capture(signal, error ?? value, same, !!error);
+			capture_signal(merge_target(batch), signal, error ?? value, same, !!error);
 
 			if (runner !== null) {
 				// Let the script consume the first value in this batch's view before releasing buffered results.
@@ -527,7 +527,7 @@ export function get_view(derived) {
 	var written = /** @type {Map<Value, BatchValue>} */ (batch_values).get(derived);
 	var held = written ?? derived;
 	var assigned = written === undefined ? (derived.f & ASSIGNED) !== 0 : written.assigned;
-	var record = /** @type {DerivedRecord | undefined} */ (batch.get_record(derived));
+	var record = /** @type {DerivedRecord | undefined} */ (get_batch_record(batch, derived));
 
 	if (assigned && !changed_since((record ?? derived).deps, held.wv)) {
 		entry = held;

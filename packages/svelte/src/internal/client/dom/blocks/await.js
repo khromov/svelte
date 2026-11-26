@@ -1,5 +1,4 @@
-/** @import { Effect, Source, TemplateNode } from '#client' */
-/** @import { Batch } from '../../reactivity/batch.js' */
+/** @import { Batch, Effect, Source, TemplateNode } from '#client' */
 import { is_promise } from '../../../shared/utils.js';
 import { block } from '../../reactivity/effects.js';
 import { internal_set, mutable_source, source } from '../../reactivity/sources.js';
@@ -16,6 +15,7 @@ import { HYDRATION_START_ELSE, UNINITIALIZED } from '../../../../constants.js';
 import { ASYNC, DESTROYED, EFFECT_PRESERVED } from '#client/constants';
 import { is_runes } from '../../context.js';
 import {
+	capture_signal,
 	ensure_batch,
 	current_batch,
 	flushSync,
@@ -23,6 +23,7 @@ import {
 	on_batch_commit,
 	on_batch_discard
 } from '../../reactivity/batch.js';
+import { activate_batch } from '../../reactivity/batch-async.js';
 import { BranchManager } from './branches.js';
 import { capture, merge_target, unset_context } from '../../reactivity/async.js';
 import { DEV } from 'esm-env';
@@ -178,13 +179,15 @@ export function await_block(node, get_input, pending_fn, then_fn, catch_fn) {
 					restore(target);
 
 					try {
-						fn((source, v) => /** @type {Batch} */ (target).capture(source, v, source.equals(v)));
+						fn((source, v) =>
+							capture_signal(/** @type {Batch} */ (target), source, v, source.equals(v))
+						);
 					} catch (error) {
 						invoke_error_boundary(error, effect);
 					} finally {
 						unset_context(false);
 						target.flush();
-						if (previous?.linked) previous.activate();
+						if (previous?.linked) activate_batch(previous);
 					}
 
 					return;
@@ -251,7 +254,7 @@ export function await_block(node, get_input, pending_fn, then_fn, catch_fn) {
 				});
 			}
 		} else {
-			if (owner(batch) === batch) batch.capture(value, input, value.equals(input));
+			if (owner(batch) === batch) capture_signal(batch, value, input, value.equals(input));
 			else internal_set(value, input);
 
 			branches.ensure(THEN, then_fn && ((target) => then_fn(target, value)));

@@ -4,6 +4,7 @@ import { snapshot } from '../../shared/clone.js';
 import { DERIVED, ASYNC, PROXY_PATH_SYMBOL, STATE_SYMBOL } from '#client/constants';
 import { effect_tracking } from '../reactivity/effects.js';
 import { batch_values, view_batch } from '../reactivity/batch.js';
+import { get_batch_record } from '../reactivity/batch-async.js';
 import { get_view } from '../reactivity/deriveds.js';
 import { active_reaction, run_of, untrack, version_of } from '../runtime.js';
 
@@ -36,8 +37,8 @@ function view_of(signal) {
  * @returns {Reaction | BatchRecord}
  */
 function run_in_view(reaction) {
-	if ((reaction.f & DERIVED) !== 0 && batch_values !== null) {
-		return view_batch?.get_record(reaction) ?? reaction;
+	if ((reaction.f & DERIVED) !== 0 && batch_values !== null && view_batch !== null) {
+		return get_batch_record(view_batch, reaction) ?? reaction;
 	}
 
 	return run_of(reaction);

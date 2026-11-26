@@ -1,6 +1,5 @@
-/** @import { Effect, TemplateNode } from '#client' */
+/** @import { Batch, Effect, TemplateNode } from '#client' */
 /** @import { Renderer } from '../../custom-renderer/types.js' */
-/** @import { Batch } from '../../reactivity/batch.js' */
 import {
 	current_batch,
 	on_batch_commit,

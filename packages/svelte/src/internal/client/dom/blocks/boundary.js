@@ -1,5 +1,4 @@
-/** @import { Effect, Source, TemplateNode, } from '#client' */
-/** @import { Batch } from '../../reactivity/batch.js' */
+/** @import { Batch, Effect, Source, TemplateNode } from '#client' */
 import {
 	BOUNDARY_EFFECT,
 	DESTROYED,
@@ -50,6 +49,7 @@ import {
 	schedule_effect,
 	skip_effect
 } from '../../reactivity/batch.js';
+import { is_batch_blocked_by } from '../../reactivity/batch-async.js';
 import { internal_set, source } from '../../reactivity/sources.js';
 import { tag } from '../../dev/tracing.js';
 import { createSubscriber } from '../../../../reactivity/create-subscriber.js';
@@ -420,7 +420,7 @@ export class Boundary {
 			if (owner.is_fork) continue;
 
 			for (const effect of pending.keys()) {
-				if (batch.is_blocked_by(effect, this.#main_effect)) {
+				if (is_batch_blocked_by(batch, effect, this.#main_effect)) {
 					return false;
 				}
 			}
