@@ -974,7 +974,7 @@ export class Batch {
 	 */
 	capture(source, value, same, error = false, updated_during_traversal = null) {
 		var previous = this.previous.get(source);
-		var later = later_writer(this, source);
+		const later = this.next !== null && async_mode_flag ? later_writer(this, source) : null;
 
 		if (previous === undefined) {
 			// the value before this batch's change is the one before the later batch's change, if any
