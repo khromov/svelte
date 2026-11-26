@@ -119,7 +119,7 @@ export class Boundary {
 	/** @type {DocumentFragment | null} */
 	#offscreen_fragment = null;
 
-	#local_pending_count = 0;
+	pending_count = 0;
 	#pending_count_update_queued = false;
 
 	/**
@@ -138,23 +138,14 @@ export class Boundary {
 	/**
 	 * A source containing the number of pending async deriveds/expressions.
 	 * Only created if `$effect.pending()` is used inside the boundary,
-	 * otherwise updating the source results in needless `Batch.ensure()`
+	 * otherwise updating the source results in needless `ensure_batch()`
 	 * calls followed by no-op flushes
 	 * @type {Source<number> | null}
 	 */
-	#effect_pending = null;
+	effect_pending = null;
 
-	#effect_pending_subscriber = createSubscriber(() => {
-		this.#effect_pending = source(this.#local_pending_count);
-
-		if (DEV) {
-			tag(this.#effect_pending, '$effect.pending()');
-		}
-
-		return () => {
-			this.#effect_pending = null;
-		};
-	});
+	/** @type {(() => void) | null} */
+	pending_subscriber = null;
 
 	/**
 	 * @param {TemplateNode} node
@@ -343,7 +334,7 @@ export class Boundary {
 	#render() {
 		try {
 			this.is_pending = this.has_pending_snippet();
-			this.#local_pending_count = 0;
+			this.pending_count = 0;
 
 			this.#main_effect = branch(() => {
 				this.#children(this.#anchor);
@@ -518,22 +509,17 @@ export class Boundary {
 	update_effect_pending(d) {
 		if (!async_mode_flag) return;
 
-		this.#local_pending_count += d;
+		this.pending_count += d;
 
-		if (!this.#effect_pending || this.#pending_count_update_queued) return;
+		if (!this.effect_pending || this.#pending_count_update_queued) return;
 		this.#pending_count_update_queued = true;
 
 		queue_micro_task(() => {
 			this.#pending_count_update_queued = false;
-			if (this.#effect_pending) {
-				internal_set(this.#effect_pending, this.#local_pending_count);
+			if (this.effect_pending) {
+				internal_set(this.effect_pending, this.pending_count);
 			}
 		});
-	}
-
-	get_effect_pending() {
-		this.#effect_pending_subscriber();
-		return get(/** @type {Source<number>} */ (this.#effect_pending));
 	}
 
 	/** @param {unknown} error */
@@ -659,11 +645,24 @@ export function pending() {
 		e.effect_pending_outside_reaction();
 	}
 
-	var boundary = active_effect.b;
+	const boundary = active_effect.b;
 
 	if (boundary === null) {
 		return 0; // TODO eventually we will need this to be global
 	}
 
-	return boundary.get_effect_pending();
+	var subscriber = (boundary.pending_subscriber ??= createSubscriber(() => {
+		boundary.effect_pending = source(boundary.pending_count);
+
+		if (DEV) {
+			tag(boundary.effect_pending, '$effect.pending()');
+		}
+
+		return () => {
+			boundary.effect_pending = null;
+		};
+	}));
+
+	subscriber();
+	return get(/** @type {Source<number>} */ (boundary.effect_pending));
 }
