@@ -580,7 +580,7 @@ export class Batch {
 					// See https://github.com/sveltejs/svelte/issues/18221#issuecomment-4497918414
 					// for a (non-minimal) reproduction that demonstrates a case where this is necessary
 					// to not get follow-up false-positives via "batch has scheduled roots" invariant errors.
-					if (!this.#is_deferred()) this.discard();
+					if (!async_mode_flag || !this.#is_deferred()) this.discard();
 					throw e;
 				}
 			}
@@ -699,7 +699,10 @@ export class Batch {
 
 		var next_batch = /** @type {Batch | null} */ (/** @type {unknown} */ (current_batch));
 
-		if (this.#pending.size === 0 && (this.#scheduled.length === 0 || next_batch !== null)) {
+		if (
+			(!async_mode_flag || this.#pending.size === 0) &&
+			(this.#scheduled.length === 0 || next_batch !== null)
+		) {
 			this.#unlink();
 		}
 
