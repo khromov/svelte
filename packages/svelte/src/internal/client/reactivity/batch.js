@@ -610,7 +610,7 @@ export class Batch {
 		collected_effects = null;
 		legacy_updates = null;
 
-		if (this.merge_requests.size > 0) {
+		if (async_mode_flag && this.merge_requests.size > 0) {
 			const sorted = Array.from(this.merge_requests, merge_target)
 				.filter((batch) => batch !== this && batch.linked && !batch.is_fork)
 				.sort((a, b) => a.id - b.id);
@@ -652,7 +652,7 @@ export class Batch {
 			return null;
 		}
 
-		const earlier_batch = this.#find_earlier_batch();
+		const earlier_batch = async_mode_flag ? this.#find_earlier_batch() : null;
 
 		if (earlier_batch) {
 			// If this batch collected deferred effects during traversal, they still need
@@ -860,6 +860,8 @@ export class Batch {
 	 * @param {Batch} batch
 	 */
 	#merge(batch) {
+		if (!async_mode_flag) return;
+
 		for (const target of batch.merge_requests) this.merge_requests.add(target);
 		batch.merge_requests.clear();
 
