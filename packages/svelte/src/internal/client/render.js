@@ -129,8 +129,10 @@ export function hydrate(component, options) {
 		// This is what happens when mounting, too, where the batch commits right away because the root boundary
 		// is pending. Otherwise, while the hydration batch waits for async work, other batches' views would undo
 		// those writes — e.g. that of a pending boundary's content, which renders in a batch of its own
-		if (async_mode_flag && current_batch !== null) {
-			current_batch.commit_writes();
+		if (async_mode_flag) {
+			if (current_batch !== null && !current_batch.is_sync) {
+				current_batch.commit_writes();
+			}
 		}
 
 		set_hydrating(false);

@@ -1,4 +1,5 @@
 /** @import { Effect, Source, TemplateNode, } from '#client' */
+/** @import { Batch } from '../../reactivity/batch.js' */
 import {
 	BOUNDARY_EFFECT,
 	DESTROYED,
@@ -42,7 +43,13 @@ import { queue_micro_task } from '../task.js';
 import * as e from '../../errors.js';
 import * as w from '../../warnings.js';
 import { DEV } from 'esm-env';
-import { Batch, current_batch } from '../../reactivity/batch.js';
+import {
+	ensure_batch,
+	current_batch,
+	on_batch_commit,
+	schedule_effect,
+	skip_effect
+} from '../../reactivity/batch.js';
 import { internal_set, source } from '../../reactivity/sources.js';
 import { tag } from '../../dev/tracing.js';
 import { createSubscriber } from '../../../../reactivity/create-subscriber.js';
@@ -364,6 +371,8 @@ export class Boundary {
 	 * @param {Effect} effect
 	 */
 	defer_effect(effect) {
+		if (!async_mode_flag) return;
+
 		this.#effects.push(effect);
 	}
 
@@ -387,7 +396,7 @@ export class Boundary {
 		var previous_renderer = custom_renderers_flag ? push_renderer(this.#effect.r) : null;
 
 		try {
-			Batch.ensure();
+			ensure_batch();
 			return fn();
 		} finally {
 			set_active_effect(previous_effect);
@@ -398,7 +407,7 @@ export class Boundary {
 	}
 
 	/**
-	 * @param {Batch} batch
+	 * @param {import('../../reactivity/batch.js').Batch} batch
 	 */
 	is_ready(batch) {
 		if (!async_mode_flag) return true;
@@ -424,6 +433,8 @@ export class Boundary {
 	 * @param {Effect[]} effects
 	 */
 	reveal(effects) {
+		if (!async_mode_flag) return;
+
 		this.is_pending = false;
 
 		// Add any deferred effects to the batch's effect queue
@@ -491,7 +502,7 @@ export class Boundary {
 			// deferred effects in the same view.
 			queue_micro_task(() => {
 				if (this.is_pending && !this.#is_destroyed()) {
-					Batch.ensure().schedule(this.#effect, MAYBE_DIRTY);
+					schedule_effect(ensure_batch(), this.#effect, MAYBE_DIRTY);
 				}
 			});
 		} else {
@@ -537,12 +548,13 @@ export class Boundary {
 			throw error;
 		}
 
-		if (async_mode_flag && current_batch?.is_fork) {
-			if (this.#main_effect) current_batch.skip_effect(this.#main_effect);
-			if (this.#pending_effect) current_batch.skip_effect(this.#pending_effect);
-			if (this.#failed_effect) current_batch.skip_effect(this.#failed_effect);
+		if (async_mode_flag ? current_batch?.is_fork : false) {
+			const batch = /** @type {import('../../reactivity/batch.js').Batch} */ (current_batch);
+			if (this.#main_effect) skip_effect(batch, this.#main_effect);
+			if (this.#pending_effect) skip_effect(batch, this.#pending_effect);
+			if (this.#failed_effect) skip_effect(batch, this.#failed_effect);
 
-			current_batch.oncommit(() => {
+			on_batch_commit(batch, () => {
 				if (!this.#is_destroyed()) this.#handle_error(error);
 			});
 		} else {

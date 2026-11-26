@@ -483,16 +483,20 @@ export function update_derived(signal) {
 
 	if (!is_dirty(derived)) return;
 
-	var records = view_batch?.records;
-	var record = records?.get(derived);
+	if (view_batch !== null && view_batch.records !== null) {
+		if (async_mode_flag) {
+			var record = view_batch.records.get(derived);
 
-	if (record !== undefined && is_current(record.deps, record.dv)) {
-		/** @type {Map<Reaction, BatchRecord>} */ (records).delete(derived);
-		promote_record(derived, record);
-	} else {
-		// (the result is stored by `update_dependencies`)
-		execute_derived(derived);
+			if (record !== undefined && is_current(record.deps, record.dv)) {
+				view_batch.records.delete(derived);
+				promote_record(derived, record);
+				return;
+			}
+		}
 	}
+
+	// (the result is stored by `update_dependencies`)
+	execute_derived(derived);
 }
 
 /**

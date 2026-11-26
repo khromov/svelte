@@ -19,7 +19,8 @@ import {
 	set_active_effect,
 	set_active_reaction
 } from '../runtime.js';
-import { current_batch } from './batch.js';
+import { current_batch, revalidate_branch } from './batch.js';
+import { upgrade_batch_if_needed } from './batch-async.js';
 import {
 	reactivity_loss_tracker,
 	derived,
@@ -107,7 +108,7 @@ export function flatten(blockers, sync, async, fn) {
 			}
 
 			if (effect !== null) {
-				/** @type {Batch} */ (current_batch).revalidate_branch(effect);
+				revalidate_branch(/** @type {Batch} */ (current_batch), effect);
 			} else {
 				effect = branch(() => {
 					try {
@@ -356,7 +357,7 @@ class Runner {
 	constructor() {
 		// TODO this should be unnecessary! these should just be class initializers. but
 		// something somewhere (vitest?) must be doing some transpilation that breaks classes
-		this.#batch = /** @type {Batch} */ (current_batch);
+		this.#batch = upgrade_batch_if_needed(/** @type {Batch} */ (current_batch));
 		this.#restore = capture();
 	}
 
@@ -433,7 +434,7 @@ class Runner {
 				var target = merge_target(batch);
 
 				if (target.linked && (active.f & DESTROYED) === 0) {
-					target.revalidate_branch(active);
+					revalidate_branch(target, active);
 				}
 
 				decrement_pending();
@@ -516,7 +517,7 @@ export function wait(blockers) {
 export function increment_pending() {
 	var effect = /** @type {Effect} */ (active_effect);
 	var boundary = effect.b; // undefined if called outside the render tree, e.g. a standalone $effect.root
-	var batch = merge_target(/** @type {Batch} */ (current_batch));
+	var batch = merge_target(upgrade_batch_if_needed(/** @type {Batch} */ (current_batch)));
 
 	/** The nearest boundary with a pending snippet, if there is one */
 	var pending = boundary;

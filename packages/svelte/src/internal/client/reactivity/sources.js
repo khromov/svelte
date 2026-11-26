@@ -29,12 +29,13 @@ import {
 	ERROR_VALUE
 } from '#client/constants';
 import * as e from '../errors.js';
-import { legacy_mode_flag, tracing_mode_flag } from '../../flags/index.js';
+import { async_mode_flag, legacy_mode_flag, tracing_mode_flag } from '../../flags/index.js';
 import { tag_proxy } from '../dev/tracing.js';
 import { get_error } from '../../shared/dev.js';
 import { component_context, is_runes } from '../context.js';
 import {
-	Batch,
+	ensure_batch,
+	capture_signal,
 	batch_values,
 	legacy_updates,
 	in_real_world,
@@ -205,7 +206,7 @@ export function internal_set(source, value, updated_during_traversal = null) {
 
 	// A value that equals the real one may still overwrite a different value in the active view.
 	if (!same || (entry !== undefined && (entry.e || !source.equals.call(entry, value)))) {
-		var batch = Batch.ensure();
+		var batch = ensure_batch();
 
 		// If we are assigning to a dirty derived we eagerly execute it to track the dependencies. (Not if
 		// it's assigned already: it tracks them, and its flags don't tell whether the assignment still holds,
@@ -214,7 +215,7 @@ export function internal_set(source, value, updated_during_traversal = null) {
 			execute_derived(/** @type {Derived} */ (source));
 		}
 
-		batch.capture(source, value, same, false, updated_during_traversal);
+		capture_signal(batch, source, value, same, false, updated_during_traversal);
 
 		if (DEV) {
 			if (tracing_mode_flag || active_effect !== null) {
@@ -275,7 +276,11 @@ export function flush_eager_effects() {
 	eager_effects_deferred = false;
 
 	// eager effects run in the real world, not in the view of a batch
-	in_real_world(run_eager_effects);
+	if (async_mode_flag) {
+		in_real_world(run_eager_effects);
+	} else {
+		run_eager_effects();
+	}
 }
 
 function run_eager_effects() {

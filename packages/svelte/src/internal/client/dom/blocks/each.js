@@ -46,7 +46,14 @@ import { queue_micro_task } from '../task.js';
 import { get } from '../../runtime.js';
 import { DEV } from 'esm-env';
 import { derived_safe_equal } from '../../reactivity/deriveds.js';
-import { current_batch } from '../../reactivity/batch.js';
+import {
+	current_batch,
+	on_batch_commit,
+	on_batch_discard,
+	skip_effect,
+	unskip_effect,
+	unskip_new_effect
+} from '../../reactivity/batch.js';
 import * as e from '../../errors.js';
 import { tag } from '../../dev/tracing.js';
 
@@ -433,7 +440,7 @@ export function each(node, flags, get_collection, get_key, render_fn, fallback_f
 				if (item.i) internal_set(item.i, index);
 
 				if (defer) {
-					batch.unskip_effect(item.e);
+					unskip_effect(batch, item.e);
 				}
 			} else {
 				item = create_item(
@@ -450,7 +457,7 @@ export function each(node, flags, get_collection, get_key, render_fn, fallback_f
 				if (!first_run) {
 					// until it is committed, the item only exists for the batches that select it
 					item.e.f |= EFFECT_OFFSCREEN;
-					if (defer) batch.unskip_new_effect(item.e);
+					if (defer) unskip_new_effect(batch, item.e);
 				}
 
 				items.set(key, item);
@@ -466,15 +473,15 @@ export function each(node, flags, get_collection, get_key, render_fn, fallback_f
 				fallback = branch(() => fallback_fn(get_offscreen_anchor()));
 				// until it is committed, the fallback only exists for the batches that select it
 				fallback.f |= EFFECT_OFFSCREEN;
-				if (defer) batch.unskip_new_effect(fallback);
+				if (defer) unskip_new_effect(batch, fallback);
 			}
 		}
 
 		if (defer && fallback !== null) {
 			if (length === 0) {
-				batch.unskip_effect(fallback);
+				unskip_effect(batch, fallback);
 			} else {
-				batch.skip_effect(fallback);
+				skip_effect(batch, fallback);
 			}
 		}
 
@@ -498,12 +505,12 @@ export function each(node, flags, get_collection, get_key, render_fn, fallback_f
 			if (defer) {
 				for (const [key, item] of items) {
 					if (!keys.has(key)) {
-						batch.skip_effect(item.e);
+						skip_effect(batch, item.e);
 					}
 				}
 
-				batch.oncommit(commit);
-				batch.ondiscard(discard);
+				on_batch_commit(batch, commit);
+				on_batch_discard(batch, discard);
 			} else {
 				commit(batch);
 			}

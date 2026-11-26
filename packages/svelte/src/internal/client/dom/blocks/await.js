@@ -1,4 +1,5 @@
 /** @import { Effect, Source, TemplateNode } from '#client' */
+/** @import { Batch } from '../../reactivity/batch.js' */
 import { is_promise } from '../../../shared/utils.js';
 import { block } from '../../reactivity/effects.js';
 import { internal_set, mutable_source, source } from '../../reactivity/sources.js';
@@ -14,7 +15,14 @@ import { get_node_value, should_defer_append } from '../operations.js';
 import { HYDRATION_START_ELSE, UNINITIALIZED } from '../../../../constants.js';
 import { ASYNC, DESTROYED, EFFECT_PRESERVED } from '#client/constants';
 import { is_runes } from '../../context.js';
-import { Batch, current_batch, flushSync, is_flushing_sync } from '../../reactivity/batch.js';
+import {
+	ensure_batch,
+	current_batch,
+	flushSync,
+	is_flushing_sync,
+	on_batch_commit,
+	on_batch_discard
+} from '../../reactivity/batch.js';
 import { BranchManager } from './branches.js';
 import { capture, merge_target, unset_context } from '../../reactivity/async.js';
 import { DEV } from 'esm-env';
@@ -120,12 +128,14 @@ export function await_block(node, get_input, pending_fn, then_fn, catch_fn) {
 		var run = {};
 
 		// (not the first run, which creates the block for every batch's view, see `should_defer_append`)
-		var fork = async_mode_flag && batch.is_fork && should_defer_append();
+		var fork = async_mode_flag ? batch.is_fork && should_defer_append() : false;
 
-		if (async_mode_flag && (fork || forks.has(batch))) {
-			forks.set(batch, run);
-			batch.oncommit(commit);
-			batch.ondiscard(discard);
+		if (async_mode_flag) {
+			if (fork || forks.has(batch)) {
+				forks.set(batch, run);
+				on_batch_commit(batch, commit);
+				on_batch_discard(batch, discard);
+			}
 		}
 
 		if (!fork) {
@@ -192,7 +202,7 @@ export function await_block(node, get_input, pending_fn, then_fn, catch_fn) {
 					batch.deactivate();
 				}
 				// Make sure we have a batch, since the branch manager expects one to exist
-				Batch.ensure();
+				ensure_batch();
 
 				try {
 					fn(internal_set);

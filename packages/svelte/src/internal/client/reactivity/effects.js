@@ -45,7 +45,13 @@ import { DEV } from 'esm-env';
 import { define_property } from '../../shared/utils.js';
 import { get_next_sibling, remove_node, append_child } from '../dom/operations.js';
 import { component_context, dev_current_component_function, dev_stack } from '../context.js';
-import { Batch, collected_effects, set_teardown_context, teardown_context } from './batch.js';
+import {
+	ensure_batch,
+	collected_effects,
+	schedule_effect,
+	set_teardown_context,
+	teardown_context
+} from './batch.js';
 import { flatten } from './async.js';
 import { set_signal_status } from './status.js';
 import { push_renderer, current_renderer, pop_renderer } from '../custom-renderer/state.js';
@@ -136,7 +142,7 @@ function create_effect(type, fn) {
 			collected_effects.push(effect);
 		} else {
 			// schedule for later
-			Batch.ensure().schedule(effect, DIRTY);
+			schedule_effect(ensure_batch(), effect, DIRTY);
 		}
 	} else if (fn !== null) {
 		try {
@@ -267,7 +273,7 @@ export function eager_effect(fn) {
  * @returns {() => void}
  */
 export function effect_root(fn) {
-	Batch.ensure();
+	ensure_batch();
 	const effect = create_effect(ROOT_EFFECT | EFFECT_PRESERVED, fn);
 
 	return () => {
@@ -281,7 +287,7 @@ export function effect_root(fn) {
  * @returns {(options?: { outro?: boolean }) => Promise<void>}
  */
 export function component_root(fn) {
-	Batch.ensure();
+	ensure_batch();
 	const effect = create_effect(ROOT_EFFECT | EFFECT_PRESERVED, fn);
 
 	return (options = {}) => {
@@ -738,7 +744,7 @@ function resume_children(effect, local) {
 	// `{#if foo}{foo.bar()}{/if}` if `foo` is now `undefined`.
 	if ((effect.f & CLEAN) === 0) {
 		// Assumption: This happens during the commit phase of the batch, causing another flush, but it's safe
-		Batch.ensure().schedule(effect, MAYBE_DIRTY);
+		schedule_effect(ensure_batch(), effect, MAYBE_DIRTY);
 	}
 
 	var child = effect.first;

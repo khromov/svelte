@@ -1,7 +1,14 @@
 /** @import { Effect, TemplateNode } from '#client' */
 /** @import { Renderer } from '../../custom-renderer/types.js' */
 /** @import { Batch } from '../../reactivity/batch.js' */
-import { current_batch } from '../../reactivity/batch.js';
+import {
+	current_batch,
+	on_batch_commit,
+	on_batch_discard,
+	skip_effect,
+	unskip_effect,
+	unskip_new_effect
+} from '../../reactivity/batch.js';
 import {
 	branch,
 	destroy_effect,
@@ -215,7 +222,7 @@ export class BranchManager {
 
 				// until it is committed, the branch only exists for the batches that select it
 				effect.f |= EFFECT_OFFSCREEN;
-				batch.unskip_new_effect(effect);
+				unskip_new_effect(batch, effect);
 
 				this.#offscreen.set(key, { effect, fragment });
 			} else {
@@ -231,22 +238,22 @@ export class BranchManager {
 		if (defer) {
 			for (const [k, effect] of this.#onscreen) {
 				if (k === key) {
-					batch.unskip_effect(effect);
+					unskip_effect(batch, effect);
 				} else {
-					batch.skip_effect(effect);
+					skip_effect(batch, effect);
 				}
 			}
 
 			for (const [k, branch] of this.#offscreen) {
 				if (k === key) {
-					batch.unskip_effect(branch.effect);
+					unskip_effect(batch, branch.effect);
 				} else {
-					batch.skip_effect(branch.effect);
+					skip_effect(batch, branch.effect);
 				}
 			}
 
-			batch.oncommit(this.#commit);
-			batch.ondiscard(this.#discard);
+			on_batch_commit(batch, this.#commit);
+			on_batch_discard(batch, this.#discard);
 		} else {
 			if (hydrating) {
 				this.anchor = hydrate_node;

@@ -1,4 +1,5 @@
 /** @import { BatchRecord, BatchValue, Derived, DerivedRecord, Effect, Reaction, Source, Value } from '#client' */
+/** @import { Batch } from './reactivity/batch.js' */
 import { DEV } from 'esm-env';
 import { get_descriptors, get_prototype_of, includes, index_of } from '../shared/utils.js';
 import {
@@ -49,16 +50,19 @@ import {
 	set_dev_stack
 } from './context.js';
 import {
-	Batch,
+	batch_settled,
 	batch_values,
 	current_batch,
+	ensure_batch,
 	first_batch,
 	flushSync,
 	push_teardown_context,
+	schedule_effect,
 	teardown_context,
 	view_batch,
 	view_cache
 } from './reactivity/batch.js';
+import { upgrade_batch_if_needed } from './reactivity/batch-async.js';
 import { handle_error } from './error-handling.js';
 import { UNINITIALIZED } from '../../constants.js';
 import { captured_signals } from './legacy.js';
@@ -230,7 +234,8 @@ export function changed_since(deps, wv, unchanged = null) {
 			var dep = deps[i];
 
 			if ((dep.f & DERIVED) === 0) {
-				if (version_of(dep) > wv) return true;
+				var v = batch_values === null ? dep.wv : (batch_values.get(dep) ?? dep).wv;
+				if (v > wv) return true;
 				continue;
 			}
 
@@ -240,7 +245,7 @@ export function changed_since(deps, wv, unchanged = null) {
 
 			if (batch_values === null) {
 				update_derived(/** @type {Derived} */ (dep));
-			} else {
+			} else if (async_mode_flag) {
 				run = get_view(/** @type {Derived} */ (dep));
 			}
 
@@ -275,9 +280,13 @@ export function changed_since(deps, wv, unchanged = null) {
  * @returns {Reaction | BatchRecord}
  */
 export function run_of(reaction) {
-	return (
-		((reaction.f & (BLOCK_EFFECT | ASYNC)) !== 0 && view_batch?.get_record(reaction)) || reaction
-	);
+	if ((reaction.f & (BLOCK_EFFECT | ASYNC)) !== 0 && view_batch !== null) {
+		if (async_mode_flag) {
+			return (!view_batch.is_sync && view_batch.get_record(reaction)) || reaction;
+		}
+	}
+
+	return reaction;
 }
 
 /**
@@ -316,8 +325,10 @@ export function is_dirty(reaction) {
 
 				if (dependency.wv !== dv[i]) return true;
 			}
-		} else if (!is_current(deps, dv)) {
-			return true;
+		} else if (async_mode_flag) {
+			if (!is_current(deps, dv)) {
+				return true;
+			}
 		}
 	}
 
@@ -347,7 +358,8 @@ function schedule_possible_effect_self_invalidation(signal, effect, root = true)
 		if ((reaction.f & DERIVED) !== 0) {
 			schedule_possible_effect_self_invalidation(/** @type {Derived} */ (reaction), effect, false);
 		} else if (effect === reaction) {
-			/** @type {Batch} */ (current_batch).schedule(
+			schedule_effect(
+				/** @type {import('./reactivity/batch.js').Batch} */ (current_batch),
 				/** @type {Effect} */ (reaction),
 				root ? DIRTY : MAYBE_DIRTY
 			);
@@ -419,12 +431,17 @@ export function abort_record(reaction, record, rerun = false) {
  * @param {number} flags
  */
 function abort_replaced(reaction, flags) {
-	var batch = current_batch;
 	var is_derived = (flags & DERIVED) !== 0;
 
 	// a teardown's run of a derived doesn't replace anything (see `teardown_view`)
 	if (is_derived && is_destroying_effect) return;
 
+	if (!async_mode_flag) {
+		abort_signal(reaction.ac);
+		return;
+	}
+
+	var batch = current_batch;
 	var real = batch === null || !batch.is_fork;
 
 	abort_record(reaction, view_batch?.records?.get(reaction), true);
@@ -473,7 +490,7 @@ function supersedes(batch, other) {
 		!batch.is_fork &&
 		!other.is_fork &&
 		other.id < batch.id &&
-		(batch_values === null || other.previous.size === 0 || batch.folded.includes(other))
+		(batch_values === null || other.previous.size === 0 || batch.f.includes(other))
 	);
 }
 
@@ -489,12 +506,14 @@ export function abort_all(reaction) {
 	abort_signal(reaction.ac);
 	reaction.ac = null;
 
-	for (var b = first_batch; b !== null; b = b.next) {
-		var record = b.records?.get(reaction);
+	if (async_mode_flag) {
+		for (var b = first_batch; b !== null; b = b.next) {
+			var record = b.records?.get(reaction);
 
-		if (record?.ac) {
-			abort_signal(record.ac);
-			record.ac = null;
+			if (record?.ac) {
+				abort_signal(record.ac);
+				record.ac = null;
+			}
 		}
 	}
 
@@ -622,18 +641,22 @@ export function update_reaction(reaction) {
 	} finally {
 		var signal = /** @type {AbortController | null} */ (abort_controller)?.signal;
 
-		if (batch !== null && signal !== undefined) {
-			// The reaction that requested the signal identifies the merge target, even if
-			// another reaction awaits its result (e.g. `let promise = $derived(load(...))`).
-			signal.addEventListener('abort', () => {
-				if (current_batch !== null) {
-					const target = merge_target(batch);
+		if (signal !== undefined) {
+			if (async_mode_flag) {
+				if (batch !== null) {
+					// The reaction that requested the signal identifies the merge target, even if
+					// another reaction awaits its result (e.g. `let promise = $derived(load(...))`).
+					signal.addEventListener('abort', () => {
+						if (current_batch !== null) {
+							const target = merge_target(upgrade_batch_if_needed(batch));
 
-					if (target !== current_batch && target.linked && !target.is_fork) {
-						current_batch.merge_requests.add(target);
-					}
+							if (target !== current_batch && target.linked && !target.is_fork) {
+								upgrade_batch_if_needed(current_batch).merge_requests.add(target);
+							}
+						}
+					});
 				}
-			});
+			}
 		}
 
 		reaction.f ^= REACTION_IS_UPDATING;
@@ -713,7 +736,9 @@ function update_dependencies(reaction, flags, value, error) {
 		first_batch !== null &&
 		first_batch.next !== null
 	) {
-		keep_global_run(/** @type {Derived} */ (reaction), flags);
+		if (async_mode_flag) {
+			keep_global_run(/** @type {Derived} */ (reaction), flags);
+		}
 	}
 
 	// Fast path: the reaction read the same values as before, in the real world, and has no other edges
@@ -723,7 +748,7 @@ function update_dependencies(reaction, flags, value, error) {
 		dv !== null &&
 		length === deps?.length &&
 		reaction.edges === deps &&
-		(flags & (BLOCK_EFFECT | ASYNC)) === 0
+		((flags & (BLOCK_EFFECT | ASYNC)) === 0 || (async_mode_flag ? false : true))
 	) {
 		// The run saw what its dependencies hold now — a write during the run after it read
 		// the value marks it dirty (see `Batch#schedule`), so it doesn't take effect here
@@ -777,15 +802,17 @@ function update_record(reaction, flags, length, value, error) {
 	// branch it selected, the value an async expression resolved to for it), which it keeps until it
 	// commits. The first run of a block effect is the exception — it creates (and commits) its initial
 	// branch. (Whether a derived's run belongs to a batch depends on what it read, see below)
-	var should_record = is_recorded_effect(flags);
+	var should_record = async_mode_flag ? is_recorded_effect(flags) : false;
 
 	// A derived that has another version in the view than in the real world — because the view undoes an
 	// assignment to it, or it was assigned in a fork — never runs for the real world (see `get_view`)
-	if (batch_values !== null && (flags & DERIVED) !== 0) {
-		var written = batch_values.get(/** @type {Derived} */ (reaction));
+	if (async_mode_flag) {
+		if (batch_values !== null && (flags & DERIVED) !== 0) {
+			var written = batch_values.get(/** @type {Derived} */ (reaction));
 
-		if (written !== undefined && written.wv !== /** @type {Derived} */ (reaction).wv) {
-			should_record = true;
+			if (written !== undefined && written.wv !== /** @type {Derived} */ (reaction).wv) {
+				should_record = true;
+			}
 		}
 	}
 
@@ -803,39 +830,46 @@ function update_record(reaction, flags, length, value, error) {
 	// to the batch halfway through the loop
 	var dv = !should_record && batch_values === null && reaction.dv !== null ? reaction.dv : [];
 
-	for (var i = 0; i < length; i++) {
-		var dep = /** @type {Value[]} */ (read)[i];
-		dv[i] = seen_version(dep);
+	if (async_mode_flag) {
+		for (var i = 0; i < length; i++) {
+			var dep = /** @type {Value[]} */ (read)[i];
+			dv[i] = seen_version(dep);
 
-		// Within a batch's view, a derived's run belongs to the batch unless everything it read is the latest
-		// value: the version it saw is the real-world one, and — for a derived — that one is up to date
-		if (
-			batch_values !== null &&
-			(flags & DERIVED) !== 0 &&
-			(dv[i] !== dep.wv || (dep.f & (DERIVED | CLEAN)) === DERIVED)
-		) {
-			should_record = true;
+			// Within a batch's view, a derived's run belongs to the batch unless everything it read is the latest
+			// value: the version it saw is the real-world one, and — for a derived — that one is up to date
+			if (
+				batch_values !== null &&
+				(flags & DERIVED) !== 0 &&
+				(dv[i] !== dep.wv || (dep.f & (DERIVED | CLEAN)) === DERIVED)
+			) {
+				should_record = true;
+			}
+		}
+	} else {
+		for (i = 0; i < length; i++) {
+			dv[i] = /** @type {Value[]} */ (read)[i].wv;
 		}
 	}
 
 	if (dv.length !== length) dv.length = length;
 
-	if (!should_record && batch_values !== null && (flags & DERIVED) !== 0) {
-		keep_global_run(/** @type {Derived} */ (reaction), flags);
+	if (async_mode_flag) {
+		if (!should_record && batch_values !== null && (flags & DERIVED) !== 0) {
+			keep_global_run(/** @type {Derived} */ (reaction), flags);
+		}
 	}
 
 	// The edges — `reaction.edges`, and `reaction` in the `reactions` of each of them — must cover what every
 	// live run of the reaction read (its global run, and the records batches hold of it), so that a change to
 	// any of those values reaches it. So unless this is a global run and no batch holds a record, edges are
 	// only added (and pruned by a later global run). Their order is independent of the run's reads
-	var keep = should_record || has_batch_record(reaction);
 	var tracking = effect_tracking() && (reaction.f & CONNECTED) !== 0;
 	var edges = reaction.edges;
 
-	if (keep && edges !== null) {
+	if (async_mode_flag ? (should_record || has_batch_record(reaction)) && edges !== null : false) {
 		if (new_deps !== null) {
 			// the edges may be a run's `deps` as well, see `update_dependencies`
-			reaction.edges = edges = edges.slice();
+			reaction.edges = edges = /** @type {Value[]} */ (edges).slice();
 			for (dep of new_deps) {
 				if (!includes.call(edges, dep)) {
 					edges.push(dep);
@@ -869,8 +903,10 @@ function update_record(reaction, flags, length, value, error) {
 		reaction.edges = read;
 	}
 
-	if (should_record) {
-		var batch = /** @type {Batch} */ (view_batch);
+	if (async_mode_flag ? should_record : false) {
+		var batch = upgrade_batch_if_needed(
+			/** @type {import('./reactivity/batch.js').Batch} */ (view_batch)
+		);
 
 		(batch.records ??= new Map()).set(
 			reaction,
@@ -896,7 +932,9 @@ function update_record(reaction, flags, length, value, error) {
 			// A record of the derived in the active batch is outdated now. (Effects never have one at this point:
 			// their runs only become global outside of processing, on their first run, or once the batch commits,
 			// whose records are promoted by then)
-			view_batch?.records?.delete(reaction);
+			if (async_mode_flag) {
+				view_batch?.records?.delete(reaction);
+			}
 		}
 	}
 }
@@ -1135,8 +1173,10 @@ function remove_reaction(signal, dependency) {
 			// in the real world, and in every batch's view (which would otherwise reuse its record of the derived)
 			set_signal_status(derived, DIRTY);
 			derived.dv = null;
-			for (var b = first_batch; b !== null; b = b.next) b.records?.delete(derived);
-			view_cache?.delete(derived);
+			if (async_mode_flag) {
+				for (var b = first_batch; b !== null; b = b.next) b.records?.delete(derived);
+				view_cache?.delete(derived);
+			}
 		}
 
 		// freeze any effects inside this derived
@@ -1253,7 +1293,7 @@ export async function tick() {
  * @since 5.36
  */
 export function settled() {
-	return Batch.ensure().settled();
+	return batch_settled(ensure_batch());
 }
 
 /**
@@ -1296,7 +1336,7 @@ export function get(signal) {
 						new_deps.push(signal);
 					}
 				}
-			} else {
+			} else if (async_mode_flag) {
 				late_reader = active_reaction;
 
 				// Late reads add an edge immediately, even if evaluating the value throws.
@@ -1402,7 +1442,9 @@ export function get(signal) {
 		}
 
 		if (batch_values !== null) {
-			view = get_view(derived);
+			if (async_mode_flag) {
+				view = get_view(derived);
+			}
 		} else {
 			update_derived(derived);
 		}
@@ -1416,7 +1458,9 @@ export function get(signal) {
 	}
 
 	if (late_reader !== null) {
-		record_late_read(late_reader, signal, view === undefined ? signal.wv : view.wv);
+		if (async_mode_flag) {
+			record_late_read(late_reader, signal, view === undefined ? signal.wv : view.wv);
+		}
 	}
 
 	if (view !== undefined && view !== signal) {
