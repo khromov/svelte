@@ -3,7 +3,8 @@ import { UNINITIALIZED } from '../../../constants.js';
 import { snapshot } from '../../shared/clone.js';
 import { DERIVED, ASYNC, PROXY_PATH_SYMBOL, STATE_SYMBOL } from '#client/constants';
 import { effect_tracking } from '../reactivity/effects.js';
-import { batch_values, view_batch } from '../reactivity/batch.js';
+import { view_batch } from '../reactivity/batch.js';
+import { batch_values } from '../reactivity/view.js';
 import { get_view } from '../reactivity/deriveds.js';
 import { active_reaction, run_of, untrack, version_of } from '../runtime.js';
 
@@ -23,7 +24,7 @@ export let tracing_expressions = null;
  * @returns {Value | DerivedRecord | BatchValue}
  */
 function view_of(signal) {
-	if (batch_values === null) return signal;
+	if (batch_values === undefined) return signal;
 	if ((signal.f & DERIVED) !== 0) return get_view(/** @type {Derived} */ (signal));
 	return batch_values.get(signal) ?? signal;
 }
@@ -36,7 +37,7 @@ function view_of(signal) {
  * @returns {Reaction | BatchRecord}
  */
 function run_in_view(reaction) {
-	if ((reaction.f & DERIVED) !== 0 && batch_values !== null) {
+	if ((reaction.f & DERIVED) !== 0 && batch_values !== undefined) {
 		return view_batch?.get_record(reaction) ?? reaction;
 	}
 

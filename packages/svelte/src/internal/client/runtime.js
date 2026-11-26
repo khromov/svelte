@@ -50,15 +50,14 @@ import {
 } from './context.js';
 import {
 	Batch,
-	batch_values,
 	current_batch,
 	first_batch,
 	flushSync,
 	push_teardown_context,
 	teardown_context,
-	view_batch,
-	view_cache
+	view_batch
 } from './reactivity/batch.js';
+import { batch_values, view_cache } from './reactivity/view.js';
 import { handle_error } from './error-handling.js';
 import { UNINITIALIZED } from '../../constants.js';
 import { captured_signals } from './legacy.js';
@@ -176,7 +175,7 @@ export function increment_write_version() {
  * @param {Value} signal
  */
 export function version_of(signal) {
-	if (batch_values === null) {
+	if (batch_values === undefined) {
 		update_derived(signal);
 		return signal.wv;
 	}
@@ -238,7 +237,7 @@ export function changed_since(deps, wv, unchanged = null) {
 			/** @type {Derived | DerivedRecord | BatchValue} */
 			var run = /** @type {Derived} */ (dep);
 
-			if (batch_values === null) {
+			if (batch_values === undefined) {
 				update_derived(/** @type {Derived} */ (dep));
 			} else {
 				run = get_view(/** @type {Derived} */ (dep));
@@ -308,7 +307,7 @@ export function is_dirty(reaction) {
 
 		if (dv === null) return true;
 
-		if (batch_values === null) {
+		if (batch_values === undefined) {
 			for (var i = 0, length = dv.length; i < length; i++) {
 				var dependency = /** @type {Value[]} */ (deps)[i];
 
@@ -429,7 +428,7 @@ function abort_replaced(reaction, flags) {
 
 	abort_record(reaction, view_batch?.records?.get(reaction), true);
 
-	if (is_derived ? batch_values === null || (real && is_outdated(reaction)) : real) {
+	if (is_derived ? batch_values === undefined || (real && is_outdated(reaction)) : real) {
 		// (the controller stays referenced until the new run is stored, see `keep_global_run`)
 		abort_signal(reaction.ac);
 	}
@@ -473,7 +472,7 @@ function supersedes(batch, other) {
 		!batch.is_fork &&
 		!other.is_fork &&
 		other.id < batch.id &&
-		(batch_values === null || other.previous.size === 0 || batch.folded.includes(other))
+		(batch_values === undefined || other.previous.size === 0 || batch.folded.includes(other))
 	);
 }
 
@@ -709,7 +708,7 @@ function update_dependencies(reaction, flags, value, error) {
 	// (in a view, whether a derived's run is a global one is decided by `update_record`)
 	if (
 		(flags & DERIVED) !== 0 &&
-		batch_values === null &&
+		batch_values === undefined &&
 		first_batch !== null &&
 		first_batch.next !== null
 	) {
@@ -719,7 +718,7 @@ function update_dependencies(reaction, flags, value, error) {
 	// Fast path: the reaction read the same values as before, in the real world, and has no other edges
 	if (
 		new_deps === null &&
-		batch_values === null &&
+		batch_values === undefined &&
 		dv !== null &&
 		length === deps?.length &&
 		reaction.edges === deps &&
@@ -781,7 +780,7 @@ function update_record(reaction, flags, length, value, error) {
 
 	// A derived that has another version in the view than in the real world — because the view undoes an
 	// assignment to it, or it was assigned in a fork — never runs for the real world (see `get_view`)
-	if (batch_values !== null && (flags & DERIVED) !== 0) {
+	if (batch_values !== undefined && (flags & DERIVED) !== 0) {
 		var written = batch_values.get(/** @type {Derived} */ (reaction));
 
 		if (written !== undefined && written.wv !== /** @type {Derived} */ (reaction).wv) {
@@ -801,7 +800,7 @@ function update_record(reaction, flags, length, value, error) {
 	// A global run in the real world updates the versions in place. Anything else needs a new array:
 	// a record must not share it with the global state, and a derived's run can turn out to belong
 	// to the batch halfway through the loop
-	var dv = !should_record && batch_values === null && reaction.dv !== null ? reaction.dv : [];
+	var dv = !should_record && batch_values === undefined && reaction.dv !== null ? reaction.dv : [];
 
 	for (var i = 0; i < length; i++) {
 		var dep = /** @type {Value[]} */ (read)[i];
@@ -810,7 +809,7 @@ function update_record(reaction, flags, length, value, error) {
 		// Within a batch's view, a derived's run belongs to the batch unless everything it read is the latest
 		// value: the version it saw is the real-world one, and — for a derived — that one is up to date
 		if (
-			batch_values !== null &&
+			batch_values !== undefined &&
 			(flags & DERIVED) !== 0 &&
 			(dv[i] !== dep.wv || (dep.f & (DERIVED | CLEAN)) === DERIVED)
 		) {
@@ -820,7 +819,7 @@ function update_record(reaction, flags, length, value, error) {
 
 	if (dv.length !== length) dv.length = length;
 
-	if (!should_record && batch_values !== null && (flags & DERIVED) !== 0) {
+	if (!should_record && batch_values !== undefined && (flags & DERIVED) !== 0) {
 		keep_global_run(/** @type {Derived} */ (reaction), flags);
 	}
 
@@ -976,7 +975,7 @@ function keep_global_run(derived, flags) {
  * @param {Value} signal
  */
 function seen_version(signal) {
-	if (batch_values === null) return signal.wv;
+	if (batch_values === undefined) return signal.wv;
 
 	if ((signal.f & DERIVED) !== 0) {
 		var cache = /** @type {Map<Derived, Derived | DerivedRecord | BatchValue>} */ (view_cache);
@@ -1401,7 +1400,7 @@ export function get(signal) {
 			derived.f |= CONNECTED;
 		}
 
-		if (batch_values !== null) {
+		if (batch_values !== undefined) {
 			view = get_view(derived);
 		} else {
 			update_derived(derived);
@@ -1411,7 +1410,7 @@ export function get(signal) {
 			unfreeze_derived_effects(derived);
 			reconnect(derived);
 		}
-	} else if (batch_values !== null) {
+	} else if (batch_values !== undefined) {
 		view = batch_values.get(signal);
 	}
 

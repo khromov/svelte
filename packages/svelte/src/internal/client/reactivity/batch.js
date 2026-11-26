@@ -59,6 +59,7 @@ import { invariant } from '../../shared/dev.js';
 import { OBSOLETE } from './deriveds.js';
 import { is_runes } from '../context.js';
 import { merge_target } from './async.js';
+import { batch_values, set_view, view_cache } from './view.js';
 
 /** @type {Batch | null} */
 export let first_batch = null;
@@ -123,26 +124,6 @@ export function teardown_write(source) {
 		context.derived_cache.clear();
 	}
 }
-
-/**
- * When time travelling (i.e. working in one batch, while other batches
- * still have ongoing work), we ignore the real values of affected
- * signals in favour of their values within the batch — along with their
- * versions: the batch's writes, and the values from before the writes of
- * other batches, which its view of the world undoes (see `activate`).
- * `null` means that the real world (i.e. the latest values) applies.
- * Doesn't contain computed deriveds, these are in {@link view_cache}.
- * @type {Map<Value, BatchValue> | null}
- */
-export let batch_values = null;
-
-/**
- * The values of deriveds in the active view of the world, for as long as it is active (see `get_view`):
- * a record of a run (in which case `e` tells whether its value is an error), the derived itself if its
- * global state applies, or the write to it that holds (an assignment). Exists whenever `batch_values` does
- * @type {Map<Derived, Derived | DerivedRecord | BatchValue> | null}
- */
-export let view_cache = null;
 
 /**
  * The batch whose view of the world is active (see `activate`). Block and async
@@ -1063,7 +1044,8 @@ export class Batch {
 	}
 
 	deactivate() {
-		current_batch = processing_batch = batch_values = view_cache = view_batch = null;
+		current_batch = processing_batch = view_batch = null;
+		if (async_mode_flag) set_view();
 	}
 
 	flush() {
@@ -1308,23 +1290,20 @@ export class Batch {
 		// processing it. The next flush must re-validate those reactions in its own view.
 		if (last_processed !== this.id) last_processed = null;
 
-		if (!async_mode_flag) {
-			batch_values = view_cache = null;
-			return;
-		}
+		if (!async_mode_flag) return;
 
 		this.folded = [];
 
 		if (!this.is_fork && this.prev === null && this.next === null) {
 			// this batch's view is the real world
-			batch_values = view_cache = null;
+			set_view();
 			return;
 		}
 
 		// if there are multiple batches, we are 'time travelling' —
 		// we need to override values with the ones in this batch...
-		batch_values = new Map(this.current);
-		view_cache = new Map();
+		var values = new Map(this.current);
+		set_view(values, new Map());
 
 		// ...and undo changes belonging to other batches unless they intersect
 		for (let batch = first_batch; batch !== null; batch = batch.next) {
@@ -1341,11 +1320,8 @@ export class Batch {
 				for (const [source, previous] of batch.previous) {
 					// (where the views agree on the value, the real one — and its version — applies. Not for an
 					// assigned derived: its value before may have been computed in another view, see `get_view`)
-					if (
-						!batch_values.has(source) &&
-						((source.f & DERIVED) !== 0 || !source.equals(previous.v))
-					) {
-						batch_values.set(source, previous);
+					if (!values.has(source) && ((source.f & DERIVED) !== 0 || !source.equals(previous.v))) {
+						values.set(source, previous);
 					}
 				}
 			}
@@ -1952,14 +1928,14 @@ export function in_real_world(fn) {
 	var previous_view_batch = view_batch;
 
 	// the real world doesn't belong to a batch, so what runs in it doesn't touch the active batch's records
-	batch_values = view_cache = view_batch = null;
+	view_batch = null;
+	if (async_mode_flag) set_view();
 
 	try {
 		fn();
 	} finally {
-		batch_values = previous_batch_values;
-		view_cache = previous_view_cache;
 		view_batch = previous_view_batch;
+		if (async_mode_flag) set_view(previous_batch_values, previous_view_cache);
 	}
 }
 
@@ -2018,8 +1994,7 @@ export function fork(fn) {
 
 		try {
 			in_real_world(() => {
-				batch_values = new Map();
-				view_cache = new Map();
+				set_view(new Map(), new Map());
 				view_batch = batch;
 
 				fn();
